@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>COAST TO KOSCIUSZKO 240KM // 3D Live Broadcast Tracker - Simon & Support Crew</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <!-- 5-Second Broadcast 3D Terrain & Satellite Pre-Loader Screen -->
+  <div id="c2k-preloader" class="preloader-overlay">
+    <div class="preloader-card">
+      <div class="preloader-badge">COAST TO KOSCIUSZKO // 241.3 KM 3D ENGINE</div>
+      <h2 class="preloader-title">PRE-LOADING 3D TERRAIN &amp; SATELLITE CORRIDOR</h2>
+      <p id="preloader-stage" class="preloader-sub">Caching 3D elevation mesh &amp; satellite megatexture into GPU memory...</p>
+      <div class="preloader-bar-wrap">
+        <div id="preloader-bar-fill" class="preloader-bar-fill" style="width: 4%;"></div>
+      </div>
+      <div class="preloader-meta">
+        <span id="preloader-counts">0 / 0 tiles cached</span>
+        <span id="preloader-pct">4%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D Terrain WebGL Map + Geographically Anchored 3D Cloud & Radar Canvas -->
+  <div id="map-container"></div>
+  <canvas id="atmosphere-canvas"></canvas>
+  <div class="broadcast-vignette"></div>
+
+  <!-- Top Broadcast Header -->
+  <header class="top-broadcast-bar">
+    <div class="broadcast-brand">
+      <div id="broadcast-status-pill" class="live-pill">
+        <span class="pulse-dot"></span>
+        <span id="broadcast-status-text">46H SIMULATOR</span>
+      </div>
+      <div class="brand-titles">
+        <h1>COAST TO KOSCIUSZKO // 241.3 KM ULTRA</h1>
+        <p>BOYDTOWN BEACH (0M) TO MT KOSCIUSZKO SUMMIT (2,228M) • COW BAIL TRAIL ROUTE</p>
+      </div>
+    </div>
+
+    <div class="top-controls-strip">
+      <div class="ctrl-group">
+        <span class="ctrl-label">Satellite</span>
+        <button class="btn-chip active" data-imagery="google">Google 3D</button>
+        <button class="btn-chip" data-imagery="esri">Esri Sat</button>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">3D Relief</span>
+        <button class="btn-chip" data-relief="1.0">1.0x True</button>
+        <button class="btn-chip active" data-relief="1.4">1.4x Broadcast</button>
+        <button class="btn-chip" data-relief="2.1">2.1x Alpine</button>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">Atmosphere</span>
+        <button id="toggle-3d-clouds" class="btn-chip active-cyan" title="Toggle 3D Volumetric Clouds driven by Live Corridor Wind & Cloud Cover">☁ 3D Clouds</button>
+        <button id="toggle-bom-radar" class="btn-chip" title="Toggle Live Australian BoM / RainViewer Precipitation Radar">🌧 BoM Radar</button>
+        <button id="toggle-milestones" class="btn-chip active" title="Toggle 10km Course Milestone Markers">📍 10K Ticks</button>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">Feed</span>
+        <button class="btn-chip active" data-telemetry-mode="SIM">46h Sim</button>
+        <button class="btn-chip" data-telemetry-mode="LIVE">Live Cloud</button>
+      </div>
+    </div>
+
+    <button id="btn-open-checkin" class="btn-crew-checkin">📡 Crew Check-In / GPS Setup</button>
+  </header>
+
+  <!-- Left Telemetry Dock: Simon (Runner), Crew Car & 4-Gate Cutoffs -->
+  <aside class="left-telemetry-dock">
+    <!-- Simon Runner Card -->
+    <section class="hud-panel runner-card">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span style="color:var(--runner-orange);">🏃 SIMON</span>
+          <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim);">#C2K RUNNER</span>
+        </div>
+        <span id="r-epistemic-badge" class="epistemic-badge hypothesis">46H SIMULATOR</span>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="stat-box">
+          <div class="stat-label">Distance</div>
+          <div class="stat-val"><span id="r-dist-km">0.0</span> <span class="stat-unit">km</span></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Elevation</div>
+          <div class="stat-val"><span id="r-ele-m">4</span> <span class="stat-unit">m</span></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Grade</div>
+          <div class="stat-val" id="r-grade-pct">0.0%</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Speed</div>
+          <div class="stat-val"><span id="r-speed-kmh">0.0</span> <span class="stat-unit">km/h</span></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Pace</div>
+          <div class="stat-val"><span id="r-pace">--:--</span> <span class="stat-unit">/km</span></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Remaining</div>
+          <div class="stat-val"><span id="r-rem-km">241.3</span> <span class="stat-unit">km</span></div>
+        </div>
+      </div>
+
+      <div class="telemetry-subrow">
+        <span>Next Gate:</span>
+        <strong id="r-next-cp">CP1 Towamba</strong>
+      </div>
+      <div class="telemetry-subrow" style="margin-top:4px;">
+        <span id="r-note" style="color:#fdba74;font-weight:500;">Stage 1: Boydtown Beach Start</span>
+      </div>
+      <div class="telemetry-subrow" style="margin-top:4px;font-family:var(--font-mono);font-size:9.5px;">
+        <span>Source:</span>
+        <span id="r-source">46h Race Simulator</span>
+      </div>
+    </section>
+
+    <!-- Support Crew Car Card -->
+    <section class="hud-panel crew-card">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span style="color:var(--crew-cyan);">🚙 CREW CAR</span>
+          <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim);">JAKE SUPPORT</span>
+        </div>
+        <span id="c-epistemic-badge" class="epistemic-badge confirmed">MOBILE TELEMETRY</span>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="stat-box">
+          <div class="stat-label">Course Ref</div>
+          <div class="stat-val"><span id="c-course-km">0.0</span> <span class="stat-unit">km</span></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Elevation</div>
+          <div class="stat-val"><span id="c-ele-m">5</span> <span class="stat-unit">m</span></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Gap to Simon</div>
+          <div class="stat-val"><span id="c-sep-km">0.00</span> <span class="stat-unit">km</span></div>
+        </div>
+      </div>
+
+      <div class="telemetry-subrow">
+        <span id="c-note" style="color:#a5f3fc;">Staged at Boydtown Beach</span>
+        <strong><span id="c-speed-kmh">0</span> km/h</strong>
+      </div>
+      <div class="telemetry-subrow" style="margin-top:4px;font-family:var(--font-mono);font-size:9.5px;">
+        <span>Feed:</span>
+        <span id="c-fix-age">Crew • Ready</span>
+      </div>
+    </section>
+
+    <!-- Official 4-Gate Cutoff Margin Matrix -->
+    <section class="hud-panel">
+      <div class="panel-header">
+        <div class="panel-title">⏱ OFFICIAL CUT-OFF GATES (46H)</div>
+      </div>
+      <div id="cutoff-gates-list" class="cutoff-list"></div>
+    </section>
+  </aside>
+
+  <!-- Right Dock: 3D Helicopter Camera Director & 5-Zone Visual Crossing + BoM Radar Matrix -->
+  <aside class="right-telemetry-dock">
+    <section class="hud-panel cam-director-panel">
+      <div class="panel-header">
+        <div class="panel-title">🚁 3D CAMERA DIRECTOR</div>
+      </div>
+      <div class="cam-grid">
+        <button class="cam-btn active" data-cam-mode="follow-simon"><span>Follow Simon</span><span>🏃</span></button>
+        <button class="cam-btn" data-cam-mode="follow-crew"><span>Follow Crew Car</span><span>🚙</span></button>
+        <button class="cam-btn" data-cam-mode="dual-frame"><span>Dual Framing</span><span>🎯</span></button>
+        <button class="cam-btn" data-cam-mode="flyover"><span>241K Heli Tour</span><span>🚁</span></button>
+        <button class="cam-btn" data-cam-mode="overview"><span>Full 241K Course</span><span>🗺</span></button>
+        <button class="cam-btn" data-fly-km="0.0"><span>Start: Boydtown</span><span>🌊</span></button>
+        <button class="cam-btn" data-fly-km="56.07"><span>Cow Bail Trail</span><span>⛰</span></button>
+        <button class="cam-btn" data-fly-km="231.94"><span>Summit 2,228m</span><span>🏔</span></button>
+      </div>
+    </section>
+
+    <section class="hud-panel weather-zones-panel">
+      <div class="panel-header">
+        <div class="panel-title">🌦 LIVE 5-ZONE WEATHER & RADAR</div>
+        <button id="btn-refresh-weather" class="btn-chip" style="padding:2px 7px;font-size:10px;">↻ LIVE WX</button>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:9.5px;color:#38bdf8;margin-bottom:6px;" id="radar-live-status">
+        Open-Meteo Live WX + RainViewer Radar Ready
+      </div>
+      <div id="weather-zones-list" class="weather-zone-list"></div>
+    </section>
+  </aside>
+
+  <!-- Bottom Broadcast Dock: 46-Hour Pre-Race Simulator Bar + Interactive 241.25 km Elevation Profile -->
+  <footer class="bottom-broadcast-dock">
+    <div class="sim-scrubber-bar">
+      <div class="sim-left-controls">
+        <button id="btn-sim-play" class="btn-chip">▶ PLAY 46H SIM</button>
+        <button class="btn-chip" data-sim-speed="60">60x</button>
+        <button class="btn-chip active" data-sim-speed="180">180x</button>
+        <button class="btn-chip" data-sim-speed="450">450x</button>
+      </div>
+
+      <div class="sim-slider-wrap">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">FRI 05:30</span>
+        <input id="sim-time-slider" type="range" class="sim-slider" min="0" max="46" step="0.05" value="6.2" />
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">SUN 03:30 (46H)</span>
+      </div>
+
+      <div id="sim-clock-readout" class="sim-clock-readout">+06h 12m • FRI 11:42</div>
+    </div>
+
+    <div class="elevation-canvas-wrap" title="Drag to scrub Simon & Crew along the 241.25 km mountain spine • Double-click to fly 3D camera">
+      <canvas id="elevation-canvas"></canvas>
+    </div>
+  </footer>
+
+  <!-- Mobile Crew Control Bar & Telemetry Pill -->
+  <nav class="mobile-crew-bar" aria-label="Mobile Broadcast Controls">
+    <div id="mob-summary-text" class="mob-summary-pill">🏃 0.0k (4m)  •  🚙 Gap 0.0k</div>
+    <div class="mob-btn-row">
+      <button type="button" class="btn-chip active" data-mobile-sheet="map">🗺 3D Map</button>
+      <button type="button" class="btn-chip" data-mobile-sheet="telemetry">📊 Telemetry</button>
+      <button type="button" class="btn-chip" data-mobile-sheet="cams">🎥 Cams & Sky</button>
+      <button type="button" class="btn-chip" data-mobile-sheet="weather">🌦 Weather</button>
+      <button type="button" class="btn-chip active" data-telemetry-mode="SIM">SIM</button>
+      <button type="button" class="btn-chip" data-telemetry-mode="LIVE">LIVE</button>
+    </div>
+  </nav>
+
+  <!-- Native Dialog: 1-Tap Mobile Crew Check-In, TrackMeLive Quick-Pin & GPX Upload -->
+  <dialog id="crew-checkin-modal" class="crew-dialog" closedby="any" aria-labelledby="checkin-dialog-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="checkin-dialog-title">📡 Crew Live Check-In & Mobile Telemetry</h2>
+        <button id="btn-close-checkin" type="button" class="btn-chip">✕ Close</button>
+      </div>
+
+      <a id="link-official-tracker" href="https://live.trackmelive.com.au/" target="_blank" rel="noopener noreferrer" class="official-tracker-banner">
+        <span>🛰 Open Official Race Satellite Map (TrackMeLive) -&gt; Read Simon's KM</span>
+        <span>↗</span>
+      </a>
+
+      <div class="form-row">
+        <label for="checkin-role">Who are you pinning on the 3D Map?</label>
+        <select id="checkin-role" class="form-select">
+          <option value="both">Simon + Crew Car Together (Rendezvous / Aid Stop)</option>
+          <option value="runner">Simon Only (Runner Spot Check-In)</option>
+          <option value="crew">Crew Car Only (Support Vehicle Position)</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Location Input Method</label>
+        <div class="loc-method-tabs" role="tablist" aria-label="Location Input Method">
+          <button type="button" class="loc-method-btn active" data-loc-method="checkpoint">📍 Checkpoint / Exact KM</button>
+          <button type="button" class="loc-method-btn" data-loc-method="gps">🎯 Phone GPS / Map Pin</button>
+          <button type="button" class="loc-method-btn" data-loc-method="gpx">📂 Import .gpx File</button>
+        </div>
+      </div>
+
+      <div id="loc-panel-checkpoint" class="loc-panel">
+        <div class="form-row">
+          <label for="checkin-cp-select">Official Checkpoint / Course Milestone</label>
+          <select id="checkin-cp-select" class="form-select"></select>
+        </div>
+        <div class="form-row">
+          <label for="checkin-exact-km">Or Enter Exact Course KM (Overrides dropdown above)</label>
+          <input id="checkin-exact-km" type="number" min="0" max="241.25" step="0.01" class="form-input" placeholder="Optional exact course km (e.g. 64.2 from TrackMeLive)" />
+        </div>
+      </div>
+
+      <div id="loc-panel-gps" class="loc-panel" hidden>
+        <div class="form-row">
+          <label>Phone Satellite Fix or Interactive 3D Map Tap</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <button id="btn-use-phone-gps" type="button" class="btn-chip active-cyan" style="justify-content:center;padding:8px;">
+              📍 Use Phone GPS Fix
+            </button>
+            <button id="btn-pick-map-pin" type="button" class="btn-chip" style="justify-content:center;padding:8px;">
+              🎯 Pick Spot on 3D Map
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <input id="checkin-lat" type="text" class="form-input" placeholder="Latitude (e.g. -36.8432)" />
+            <input id="checkin-lon" type="text" class="form-input" placeholder="Longitude (e.g. 149.3912)" />
+          </div>
+        </div>
+      </div>
+
+      <div id="loc-panel-gpx" class="loc-panel" hidden>
+        <div class="form-row">
+          <label for="checkin-gpx-file">Upload GPX Track File (from GPSLogger / Drive / Garmin)</label>
+          <input id="checkin-gpx-file" type="file" accept=".gpx,application/gpx+xml,text/xml" class="form-input" />
+          <div id="gpx-parse-summary" class="url-copy-box">
+            Select a .gpx file to extract the latest GPS fix and recent breadcrumb trail.
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="checkin-race-status">Race Mode</label>
+        <select id="checkin-race-status" class="form-select">
+          <option value="LIVE_RACE">LIVE_RACE (Promote public tracker to live race positions)</option>
+          <option value="PRE_RACE_SIM">PRE_RACE_SIM (Pre-race dry run / keep public banner in pre-race countdown)</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="checkin-note">Status / Crew Note (Shown on Public Broadcast HUD)</label>
+        <input id="checkin-note" type="text" class="form-input" placeholder="e.g. Simon feeling strong leaving Cathcart CP3!" />
+      </div>
+
+      <div class="form-row">
+        <label for="checkin-pin">Crew Security PIN</label>
+        <input id="checkin-pin" type="password" class="form-input" placeholder="Enter Crew Security PIN" autocomplete="off" />
+      </div>
+
+      <div id="checkin-feedback" class="checkin-feedback" hidden></div>
+
+      <button id="btn-submit-checkin" type="button" class="btn-crew-checkin" style="width:100%;padding:10px;">
+        Broadcast Live Pin to 3D Map
+      </button>
+    </div>
+  </dialog>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="data/c2k_course_bundle.js"></script>
+  <script src="src/terrainEngine.js"></script>
+  <script src="src/weatherClouds3D.js"></script>
+  <script src="src/telemetryClient.js"></script>
+  <script src="src/broadcastHud.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>
