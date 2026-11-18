@@ -1,0 +1,19 @@
+# Private Relay Credentials & Tokens (NEVER commit to public GitHub)
+data/c2k_relay_config.json
+docs/macrodroid_gpslogger_setup.md
+.tokens/
+*.env
+
+# Bulky Local Archives & Raw Scrape Media (kept on H: Drive only)
+_archive/
+raw_scrape/
+gpx_drop/
+
+# OS / Python / Editor Artifacts
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+~$*

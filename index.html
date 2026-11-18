@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>COAST TO KOSCIUSZKO 240KM - 3D Live Broadcast Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <div id="app-shell">
+    <!-- Full-Bleed Auto-Hybrid 3D Viewport -->
+    <main id="map-stage" aria-label="Coast to Kosciuszko Interactive 3D Map">
+      <!-- Micro Stage: MapLibre GL Street Satellite & Contours (crossfades in on tight zoom >= 12.2) -->
+      <div id="map-container"></div>
+
+      <!-- Macro Stage: Instant Three.js Pre-Baked 3D Corridor Mesh + Projected Broadcast Beacons -->
+      <div id="three-corridor-stage">
+        <canvas id="three-corridor-canvas"></canvas>
+        <div id="three-beacon-overlay" class="is-overview-zoom"></div>
+      </div>
+
+      <!-- Live 3D Clouds & Night Headlamp Canvas + Atmospheric Broadcast Vignette -->
+      <canvas id="atmosphere-canvas" aria-hidden="true"></canvas>
+      <div class="broadcast-vignette" aria-hidden="true"></div>
+
+      <!-- Top Broadcast Header -->
+      <header class="top-broadcast-bar">
+        <div class="broadcast-brand">
+          <div id="broadcast-status-pill" class="live-pill">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            <span id="broadcast-status-text">46H SIMULATOR</span>
+          </div>
+          <div class="brand-titles">
+            <h1>COAST TO KOSCI</h1>
+            <p>241.3 KM · BOYDTOWN TO KOSCIUSZKO</p>
+          </div>
+          <button id="hybrid-engine-badge" type="button" class="hybrid-engine-badge" title="Three.js 3D Corridor Mesh (60 FPS macro terrain) - zoom past 12.2 for Google Street Sat">3D CORRIDOR</button>
+        </div>
+
+        <div class="top-controls-strip" role="toolbar" aria-label="Map Layers and Telemetry Mode">
+          <div class="ctrl-group">
+            <span class="ctrl-label">Map</span>
+            <button type="button" class="btn-chip active" data-imagery="google">Google 3D</button>
+            <button type="button" class="btn-chip" data-imagery="relief">Topo Relief</button>
+            <button type="button" class="btn-chip" data-imagery="esri">Esri Sat</button>
+          </div>
+
+          <div class="ctrl-group ctrl-relief-wrap">
+            <label for="relief-slider" class="ctrl-label">Relief</label>
+            <input id="relief-slider" class="brand-slider relief-slider" type="range" min="1" max="3.5" step="0.1" value="2.2" aria-valuetext="2.2x vertical exaggeration" />
+            <span id="relief-val-label" class="relief-val">x2.2</span>
+          </div>
+
+          <div class="ctrl-group">
+            <span class="ctrl-label">Layers</span>
+            <button id="toggle-3d-clouds" type="button" class="btn-chip" title="Toggle Live Wind-Driven 3D Clouds">Clouds</button>
+            <button id="toggle-bom-radar" type="button" class="btn-chip" title="Toggle Live Australian BoM / RainViewer Radar">Radar</button>
+            <button id="toggle-milestones" type="button" class="btn-chip active" title="Toggle 10km Course Milestones">10K Ticks</button>
+            <button id="toggle-toilets" type="button" class="btn-chip" title="Toggle Official 2026 Toilets &amp; Community Aid Pins">Toilets &amp; Aid</button>
+          </div>
+
+          <div class="ctrl-group">
+            <span class="ctrl-label">Feed</span>
+            <button type="button" class="btn-chip active" data-telemetry-mode="SIM">46h Sim</button>
+            <button type="button" class="btn-chip" data-telemetry-mode="LIVE">Live Cloud</button>
+          </div>
+        </div>
+
+        <div class="top-right-actions">
+          <button id="btn-toggle-all-hud" type="button" class="btn-chip hud-hide-btn" aria-pressed="false" title="Collapse both side docks so the 3D map breathes (Shortcut: H)">Hide Docks</button>
+          <button id="btn-open-checkin" type="button" class="btn-crew-checkin">Crew Check-In</button>
+        </div>
+      </header>
+
+      <!-- Left Collapsible Telemetry & Cut-Off Dock -->
+      <aside id="left-telemetry-dock" class="left-telemetry-dock" aria-label="Simon, Crew and Cut-Off Telemetry">
+        <div class="dock-rail-bar">
+          <span class="dock-rail-title">LIVE TELEMETRY &amp; GATES</span>
+          <button id="btn-collapse-left-dock" type="button" class="dock-collapse-btn" aria-expanded="true" aria-controls="left-telemetry-dock" title="Collapse Left Dock">Hide &lt;</button>
+        </div>
+
+        <!-- Simon + Crew Cards -->
+        <section id="drawer-telemetry" class="dock-section">
+          <div class="hud-panel runner-card">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span style="color:var(--runner-orange);">SIMON</span>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">#C2K RUNNER</span>
+              </div>
+              <span id="r-epistemic-badge" class="epistemic-badge hypothesis">46H SIMULATOR</span>
+            </div>
+
+            <div class="telemetry-grid">
+              <div class="stat-box">
+                <div class="stat-label">Distance</div>
+                <div class="stat-val"><span id="r-dist-km">0.0</span> <span class="stat-unit">km</span></div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Elevation</div>
+                <div class="stat-val"><span id="r-ele-m">4</span> <span class="stat-unit">m</span></div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Grade</div>
+                <div class="stat-val" id="r-grade-pct">0.0%</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Speed</div>
+                <div class="stat-val"><span id="r-speed-kmh">0.0</span> <span class="stat-unit">km/h</span></div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Pace</div>
+                <div class="stat-val"><span id="r-pace">--:--</span> <span class="stat-unit">/km</span></div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Remaining</div>
+                <div class="stat-val"><span id="r-rem-km">241.3</span> <span class="stat-unit">km</span></div>
+              </div>
+            </div>
+
+            <div class="telemetry-subrow">
+              <span>Next Gate:</span>
+              <strong id="r-next-cp">CP1 Towamba</strong>
+            </div>
+            <button id="r-next-toilet-row" type="button" class="telemetry-subrow clickable-subrow" title="Click for official rules &amp; Google Maps directions">
+              <span>Next Toilet/Aid:</span>
+              <strong id="r-next-toilet">--</strong>
+            </button>
+            <div class="telemetry-subrow" style="margin-top:4px;">
+              <span id="r-note" style="color:#fdba74;font-weight:500;">Stage 1: Boydtown Beach Start</span>
+            </div>
+            <div class="telemetry-subrow" style="margin-top:4px;font-family:var(--font-mono);font-size:9.5px;">
+              <span>Source:</span>
+              <span id="r-source">46h Race Simulator</span>
+            </div>
+          </div>
+
+          <div class="hud-panel crew-card">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span style="color:var(--crew-cyan);">CREW CAR</span>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">JAKE SUPPORT</span>
+              </div>
+              <span id="c-epistemic-badge" class="epistemic-badge confirmed">MOBILE TELEMETRY</span>
+            </div>
+
+            <div class="telemetry-grid">
+              <div class="stat-box">
+                <div class="stat-label">Course Ref</div>
+                <div class="stat-val"><span id="c-course-km">0.0</span> <span class="stat-unit">km</span></div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Elevation</div>
+                <div class="stat-val"><span id="c-ele-m">5</span> <span class="stat-unit">m</span></div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Gap to Simon</div>
+                <div class="stat-val"><span id="c-sep-km">0.00</span> <span class="stat-unit">km</span></div>
+              </div>
+            </div>
+
+            <div class="telemetry-subrow">
+              <span id="c-note" style="color:#a5f3fc;">Staged at Boydtown Beach</span>
+              <strong><span id="c-speed-kmh">0</span> km/h</strong>
+            </div>
+            <button id="c-next-toilet-row" type="button" class="telemetry-subrow clickable-subrow" title="Click for crew toilet rules &amp; Google Maps driving directions">
+              <span>Crew Next Stop:</span>
+              <strong id="c-next-toilet">--</strong>
+            </button>
+            <div class="telemetry-subrow" style="margin-top:4px;font-family:var(--font-mono);font-size:9.5px;">
+              <span>Feed:</span>
+              <span id="c-fix-age">Crew · Ready</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Official 6-Gate 2026 Cut-Off Countdown & Matrix -->
+        <section id="drawer-cutoffs" class="hud-panel">
+          <div class="panel-header">
+            <div class="panel-title">2026 CUT-OFF GATES</div>
+            <span id="pill-cutoff-summary" class="pill-mini-badge">6 Gates</span>
+          </div>
+          <div id="cutoff-alert-banner" class="cutoff-alert-banner" hidden></div>
+          <div id="cutoff-hero-card" class="cutoff-hero-card"></div>
+          <div id="cutoff-gates-list" class="cutoff-list"></div>
+        </section>
+      </aside>
+
+      <!-- Floating Re-Open Pill when Left Dock is Collapsed -->
+      <div id="dock-expand-left-wrap" class="dock-expand-wrap is-left" hidden>
+        <button id="btn-expand-left-dock" type="button" class="dock-reopen-btn" aria-expanded="false" aria-controls="left-telemetry-dock">Show Telemetry &gt;</button>
+        <div class="mini-live-strip">
+          <span id="strip-simon-summary" class="strip-entity is-runner">Simon · 0.0 km · 4m</span>
+          <span class="strip-sep" aria-hidden="true">·</span>
+          <span id="strip-crew-summary" class="strip-entity is-crew">Crew · 0.0 km</span>
+        </div>
+      </div>
+
+      <!-- Right Collapsible Camera Director, Weather & Toilets Dock -->
+      <aside id="right-broadcast-dock" class="right-telemetry-dock" aria-label="Camera Director, Weather and Official Stops">
+        <div class="dock-rail-bar">
+          <button id="btn-collapse-right-dock" type="button" class="dock-collapse-btn" aria-expanded="true" aria-controls="right-broadcast-dock" title="Collapse Right Dock">&gt; Hide</button>
+          <span class="dock-rail-title">CAMERAS, WX &amp; TOILETS</span>
+        </div>
+
+        <section class="hud-panel cam-director-panel">
+          <div class="panel-header">
+            <div class="panel-title">3D CAMERA DIRECTOR</div>
+          </div>
+          <div class="cam-grid">
+            <button type="button" class="cam-btn active" data-cam-mode="overview"><span>Full 241K Course</span></button>
+            <button type="button" class="cam-btn" data-cam-mode="follow-simon"><span>Follow Simon</span></button>
+            <button type="button" class="cam-btn" data-cam-mode="follow-crew"><span>Follow Crew Car</span></button>
+            <button type="button" class="cam-btn" data-cam-mode="dual-frame"><span>Dual Framing</span></button>
+            <button id="btn-fly-course" type="button" class="cam-btn" data-cam-mode="flyover"><span>241K Heli Tour</span></button>
+            <button type="button" class="cam-btn" data-fly-km="0.0"><span>Start: Boydtown</span></button>
+            <button type="button" class="cam-btn" data-fly-km="56.07"><span>Cow Bail 56k</span></button>
+            <button type="button" class="cam-btn" data-fly-km="231.94"><span>Summit 2,228m</span></button>
+          </div>
+        </section>
+
+        <section id="drawer-weather" class="hud-panel weather-zones-panel">
+          <div class="panel-header">
+            <div class="panel-title">5-ZONE LIVE WEATHER</div>
+            <button id="btn-refresh-weather" type="button" class="btn-chip" style="padding:3px 8px;font-size:10px;">Refresh WX</button>
+          </div>
+          <div id="radar-live-status" class="radar-status-sub">Open-Meteo Live WX + BoM Radar Ready</div>
+          <div id="weather-zones-list" class="weather-zone-list"></div>
+        </section>
+
+        <section id="toilets-aid-panel" class="hud-panel toilets-aid-panel">
+          <div class="panel-header">
+            <div class="panel-title">OFFICIAL TOILETS &amp; AID</div>
+            <button id="btn-panel-toggle-toilets" type="button" class="btn-chip" style="padding:3px 8px;font-size:10px;">3D Pins</button>
+          </div>
+          <div class="toilets-subcopy">2026 Runners Guide stops - tap any stop for rules &amp; directions</div>
+          <div id="toilets-aid-list" class="toilets-aid-list"></div>
+        </section>
+      </aside>
+
+      <!-- Floating Re-Open Pill when Right Dock is Collapsed -->
+      <div id="dock-expand-right-wrap" class="dock-expand-wrap is-right" hidden>
+        <button id="btn-expand-right-dock" type="button" class="dock-reopen-btn" aria-expanded="false" aria-controls="right-broadcast-dock">&lt; Cams &amp; Stops</button>
+      </div>
+
+      <!-- Inboard Compass, Zoom & Orbit/Pan Controls -->
+      <div class="stage-cam-controls" aria-label="Compass, Zoom and Drag Mode">
+        <button id="btn-compass-reset" type="button" class="cam-icon-btn" aria-label="Reset map bearing to North" title="Reset North">
+          <svg id="compass-needle-svg" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
+            <path d="M12 3L15.5 12H8.5L12 3Z" fill="#ff5a1f" />
+            <path d="M12 21L8.5 12H15.5L12 21Z" fill="#94a3b8" />
+          </svg>
+        </button>
+        <button id="btn-zoom-in" type="button" class="cam-icon-btn" aria-label="Zoom in" title="Zoom in">
+          <span aria-hidden="true">+</span>
+        </button>
+        <button id="btn-zoom-out" type="button" class="cam-icon-btn" aria-label="Zoom out" title="Zoom out">
+          <span aria-hidden="true">-</span>
+        </button>
+        <button id="btn-drag-mode" type="button" class="cam-mode-pill is-orbit" aria-pressed="true" title="Toggle mouse left-drag between 3D Orbit and Pan">Orbit</button>
+      </div>
+
+      <!-- Bottom Broadcast Dock: 46h Sim Scrubber + 241.25 km Elevation Profile -->
+      <footer class="bottom-broadcast-dock">
+        <div class="sim-scrubber-bar">
+          <div class="sim-left-controls">
+            <button id="btn-sim-play" type="button" class="btn-chip">Play 46h Sim</button>
+            <button type="button" class="btn-chip" data-sim-speed="60">60x</button>
+            <button type="button" class="btn-chip active" data-sim-speed="180">180x</button>
+            <button type="button" class="btn-chip" data-sim-speed="450">450x</button>
+          </div>
+
+          <div class="sim-slider-wrap">
+            <span id="live-readout-strip" class="live-readout-inline">0.0 km · 4 m · Boydtown Beach</span>
+            <label for="sim-time-slider" class="sr-only">46-hour race simulation timeline</label>
+            <input id="sim-time-slider" type="range" class="brand-slider sim-slider" min="0" max="46" step="0.05" value="6.2" aria-valuetext="6.2 hours elapsed" />
+          </div>
+
+          <div id="sim-clock-readout" class="sim-clock-readout">+06h 12m · FRI 11:42</div>
+        </div>
+
+        <div class="elevation-canvas-wrap" title="Hover to inspect elevation &amp; grade - Drag to scrub Simon &amp; Crew - Double-click to zoom MapLibre 3D">
+          <canvas id="elevation-canvas"></canvas>
+        </div>
+      </footer>
+    </main>
+
+    <!-- Mobile Sticky Crew Navigation Bar -->
+    <nav class="mobile-crew-bar" aria-label="Mobile Broadcast Controls">
+      <div id="mob-summary-text" class="mob-summary-pill">Simon 0.0k (4m) · Crew Gap 0.0k</div>
+      <div class="mob-btn-row">
+        <button type="button" class="btn-chip active" data-mobile-sheet="map">3D Map</button>
+        <button type="button" class="btn-chip" data-mobile-sheet="telemetry">Telemetry</button>
+        <button type="button" class="btn-chip" data-mobile-sheet="toilets">Toilets</button>
+        <button type="button" class="btn-chip" data-mobile-sheet="cams">Cams &amp; Layers</button>
+        <button type="button" class="btn-chip" data-mobile-sheet="weather">Weather</button>
+        <button type="button" class="btn-chip active" data-telemetry-mode="SIM">SIM</button>
+        <button type="button" class="btn-chip" data-telemetry-mode="LIVE">LIVE</button>
+      </div>
+    </nav>
+  </div>
+
+  <!-- Native Dialog: 1-Tap Crew Check-In, TrackMeLive Quick-Pin & GPX Upload -->
+  <dialog id="crew-checkin-modal" class="crew-dialog" closedby="any" aria-labelledby="checkin-dialog-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="checkin-dialog-title">Crew Live Check-In &amp; Mobile Telemetry</h2>
+        <button id="btn-close-checkin" type="button" class="btn-chip">Close</button>
+      </div>
+
+      <a id="link-official-tracker" href="https://live.trackmelive.com.au/" target="_blank" rel="noopener noreferrer" class="official-tracker-banner">
+        <span>Open Official Race Satellite Map (TrackMeLive) -&gt; Read Simon's KM</span>
+        <span aria-hidden="true">&#8599;</span>
+      </a>
+
+      <div class="form-row">
+        <label for="checkin-role">Who are you pinning on the 3D Map?</label>
+        <select id="checkin-role" class="form-select">
+          <option value="both">Simon + Crew Car Together (Rendezvous / Aid Stop)</option>
+          <option value="runner">Simon Only (Runner Spot Check-In)</option>
+          <option value="crew">Crew Car Only (Support Vehicle Position)</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Location Input Method</label>
+        <div class="loc-method-tabs" role="tablist" aria-label="Location Input Method">
+          <button type="button" class="loc-method-btn active" data-loc-method="checkpoint">Checkpoint / Exact KM</button>
+          <button type="button" class="loc-method-btn" data-loc-method="gps">Phone GPS / Map Pin</button>
+          <button type="button" class="loc-method-btn" data-loc-method="gpx">Import .gpx File</button>
+        </div>
+      </div>
+
+      <div id="loc-panel-checkpoint" class="loc-panel">
+        <div class="form-row">
+          <label for="checkin-cp-select">Official Checkpoint / Course Milestone</label>
+          <select id="checkin-cp-select" class="form-select"></select>
+        </div>
+        <div class="form-row">
+          <label for="checkin-exact-km">Or Enter Exact Course KM (Overrides dropdown above)</label>
+          <input id="checkin-exact-km" type="number" min="0" max="241.25" step="0.01" class="form-input" placeholder="Optional exact course km (e.g. 64.2 from TrackMeLive)" />
+        </div>
+      </div>
+
+      <div id="loc-panel-gps" class="loc-panel" hidden>
+        <div class="form-row">
+          <label>Phone Satellite Fix or Interactive 3D Map Tap</label>
+          <div class="gps-btn-pair">
+            <button id="btn-use-phone-gps" type="button" class="btn-chip active-cyan">Use Phone GPS Fix</button>
+            <button id="btn-pick-map-pin" type="button" class="btn-chip">Pick Spot on 3D Map</button>
+          </div>
+          <div class="gps-coord-pair">
+            <input id="checkin-lat" type="text" class="form-input" aria-label="Latitude" placeholder="Latitude (e.g. -36.8432)" />
+            <input id="checkin-lon" type="text" class="form-input" aria-label="Longitude" placeholder="Longitude (e.g. 149.3912)" />
+          </div>
+        </div>
+      </div>
+
+      <div id="loc-panel-gpx" class="loc-panel" hidden>
+        <div class="form-row">
+          <label for="checkin-gpx-file">Upload GPX Track File (from GPSLogger / Drive / Garmin)</label>
+          <input id="checkin-gpx-file" type="file" accept=".gpx,application/gpx+xml,text/xml" class="form-input" />
+          <div id="gpx-parse-summary" class="url-copy-box">
+            Select a .gpx file to extract the latest GPS fix and recent breadcrumb trail.
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="checkin-race-status">Race Mode</label>
+        <select id="checkin-race-status" class="form-select">
+          <option value="LIVE_RACE">LIVE_RACE (Promote public tracker to live race positions)</option>
+          <option value="PRE_RACE_SIM">PRE_RACE_SIM (Pre-race dry run / keep public banner in pre-race countdown)</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="checkin-note">Status / Crew Note (Shown on Public Broadcast HUD)</label>
+        <input id="checkin-note" type="text" class="form-input" placeholder="e.g. Simon feeling strong leaving Cathcart CP3!" />
+      </div>
+
+      <div class="form-row">
+        <label for="checkin-pin">Crew Security PIN</label>
+        <input id="checkin-pin" type="password" class="form-input" placeholder="Enter Crew Security PIN" autocomplete="off" />
+      </div>
+
+      <div id="checkin-feedback" class="checkin-feedback" hidden></div>
+
+      <button id="btn-submit-checkin" type="button" class="btn-crew-checkin btn-submit-full">
+        Broadcast Live Pin to 3D Map
+      </button>
+    </div>
+  </dialog>
+
+  <!-- Native Dialog: Official Toilet & Community Aid Stop Detail Card -->
+  <dialog id="stop-detail-modal" class="crew-dialog" closedby="any" aria-labelledby="stop-detail-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="stop-detail-title">Official Stop Details</h2>
+        <button id="btn-close-stop-detail" type="button" class="btn-chip">Close</button>
+      </div>
+
+      <div id="stop-detail-badges" class="stop-detail-badges"></div>
+
+      <div class="telemetry-grid stop-detail-grid">
+        <div class="stat-box">
+          <div class="stat-label">Course KM</div>
+          <div class="stat-val" id="stop-detail-km">--</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">From Simon</div>
+          <div class="stat-val" id="stop-detail-simon-dist">--</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">From Crew Car</div>
+          <div class="stat-val" id="stop-detail-crew-dist">--</div>
+        </div>
+      </div>
+
+      <div class="stop-detail-box" id="stop-detail-toilet-box">
+        <div class="stop-detail-lbl">TOILET &amp; RULE</div>
+        <div class="stop-detail-txt" id="stop-detail-toilet"></div>
+      </div>
+
+      <div class="stop-detail-box" id="stop-detail-aid-box">
+        <div class="stop-detail-lbl">FOOD / AID / SUPPLIES</div>
+        <div class="stop-detail-txt" id="stop-detail-aid"></div>
+      </div>
+
+      <div class="stop-detail-box" id="stop-detail-crew-box">
+        <div class="stop-detail-lbl">CREW &amp; ACCESS NOTE</div>
+        <div class="stop-detail-txt" id="stop-detail-crew"></div>
+      </div>
+
+      <div class="stop-detail-box is-note" id="stop-detail-offroute-box" hidden>
+        <div class="stop-detail-lbl">ALIGNMENT / PASSES</div>
+        <div class="stop-detail-txt" id="stop-detail-offroute"></div>
+      </div>
+
+      <div class="stop-detail-actions">
+        <button id="btn-stop-fly" type="button" class="btn-chip active btn-modal-action">Fly 3D Camera</button>
+        <a id="btn-stop-gmaps" href="#" target="_blank" rel="noopener noreferrer" class="btn-crew-checkin btn-modal-action">Drive in Google Maps</a>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Hybrid Dual-Engine Scripts (Three.js r128 Macro Corridor + MapLibre v4 Micro Street Satellite) -->
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/lines/LineSegmentsGeometry.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/lines/LineGeometry.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/lines/LineMaterial.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/lines/LineSegments2.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/lines/Line2.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="data/c2k_course_bundle.js"></script>
+  <script src="src/hybridThreeStage.js"></script>
+  <script src="src/terrainEngine.js"></script>
+  <script src="src/weatherClouds3D.js"></script>
+  <script src="src/telemetryClient.js"></script>
+  <script src="src/broadcastHud.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

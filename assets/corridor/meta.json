@@ -1,0 +1,17 @@
+{
+  "lon_min": 148.08,
+  "lon_max": 150.08,
+  "lat_min": -37.23,
+  "lat_max": -36.23,
+  "merc_y_min": 0.6081051413454825,
+  "merc_y_max": 0.6115711199648586,
+  "width_km": 178.44,
+  "height_km": 111.13,
+  "world_width": 160.0,
+  "world_depth": 100.0,
+  "meters_per_unit": 1115.25,
+  "ele_offset_m": -100.0,
+  "ele_scale_m": 2600.0,
+  "height_width": 1024,
+  "height_height": 640
+}
