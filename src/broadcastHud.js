@@ -158,9 +158,30 @@ window.C2KBroadcastHud = (function () {
     return { surface: surface, placeCtx: placeCtx };
   }
 
+  function getProfilePadding(width) {
+    const compact = width < 520;
+    return {
+      compact: compact,
+      padL: compact ? 30 : 42,
+      padR: compact ? 10 : 18,
+      padT: compact ? 19 : 24,
+      padB: compact ? 18 : 22
+    };
+  }
+
+  function formatMobileDefaultSummary() {
+    if (!latestHudArgs || !latestHudArgs.runner || !latestHudArgs.crew) return "";
+    const runner = latestHudArgs.runner;
+    const crew = latestHudArgs.crew;
+    const rKm = runner.course_km || 0;
+    const sepKm = window.C2KTelemetryClient
+      ? window.C2KTelemetryClient.haversineKm(runner.lat, runner.lon, crew.lat, crew.lon)
+      : 0;
+    return "Simon " + rKm.toFixed(1) + "k (" + Math.round(runner.ele_m || 0) + "m) · Gap " + sepKm.toFixed(1) + "k";
+  }
+
   function updateReadoutBarText() {
     const el = document.getElementById("live-readout-strip");
-    if (!el) return;
 
     if (hoverKm !== null && window.C2KTerrainEngine && window.C2KTerrainEngine.getPointAtKm) {
       const pt = window.C2KTerrainEngine.getPointAtKm(hoverKm);
@@ -169,13 +190,18 @@ window.C2KBroadcastHud = (function () {
         const grade = (pt[4] || 0).toFixed(1);
         const gradeStr = (pt[4] > 0 ? "+" : "") + grade + "%";
         const ctx = getSurfaceAndPlaceAtKm(hoverKm);
-        el.textContent =
-          hoverKm.toFixed(1) + " km · " + ele + " m · grade " + gradeStr + " · " + ctx.placeCtx + " · " + ctx.surface;
+        if (el) {
+          el.textContent =
+            hoverKm.toFixed(1) + " km · " + ele + " m · grade " + gradeStr + " · " + ctx.placeCtx + " · " + ctx.surface;
+        }
+        if (isDraggingProfile && window.innerWidth <= 1024) {
+          setText("mob-summary-text", hoverKm.toFixed(1) + "k · " + ele + "m (" + gradeStr + ") · " + ctx.placeCtx);
+        }
         return;
       }
     }
 
-    if (latestHudArgs && latestHudArgs.runner) {
+    if (el && latestHudArgs && latestHudArgs.runner) {
       const r = latestHudArgs.runner;
       const rKm = r.course_km || 0;
       const gradeStr = (r.grade_pct > 0 ? "+" : "") + (r.grade_pct || 0).toFixed(1) + "%";
@@ -207,8 +233,9 @@ window.C2KBroadcastHud = (function () {
   function resizeElevationCanvas() {
     if (!eleCanvas || !eleCanvas.parentElement) return;
     const rect = eleCanvas.parentElement.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 20) return;
     cachedW = Math.max(240, rect.width || 600);
-    cachedH = Math.max(56, rect.height || 138);
+    cachedH = Math.max(46, rect.height || 138);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     eleCanvas.width = Math.floor(cachedW * dpr);
     eleCanvas.height = Math.floor(cachedH * dpr);
@@ -218,12 +245,14 @@ window.C2KBroadcastHud = (function () {
   }
 
   function bindElevationEvents() {
+    let lastTouchTapTs = 0;
+    let lastTouchTapX = 0;
+
     function getKmFromPointerEvent(e) {
       const rect = eleCanvas.getBoundingClientRect();
-      const padL = 42;
-      const padR = 18;
-      const plotW = Math.max(10, rect.width - padL - padR);
-      const x = e.clientX - rect.left - padL;
+      const pads = getProfilePadding(rect.width || cachedW);
+      const plotW = Math.max(10, rect.width - pads.padL - pads.padR);
+      const x = e.clientX - rect.left - pads.padL;
       const frac = Math.max(0, Math.min(1, x / plotW));
       return frac * ((courseData && courseData.meta && courseData.meta.total_distance_km) || 241.25);
     }
@@ -259,6 +288,26 @@ window.C2KBroadcastHud = (function () {
       isDraggingProfile = false;
       if (e && e.pointerId !== undefined && eleCanvas.releasePointerCapture) {
         try { eleCanvas.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+      if (e && e.type === "pointerup" && e.pointerType && e.pointerType !== "mouse") {
+        const now = performance.now();
+        if (now - lastTouchTapTs < 320 && Math.abs(e.clientX - lastTouchTapX) < 24) {
+          const km = getKmFromPointerEvent(e);
+          const pt = window.C2KTerrainEngine.getPointAtKm(km);
+          if (pt) {
+            window.C2KTerrainEngine.flyToCoordinate(pt[0], pt[1], 13.4, 62, pt[5]);
+          }
+          lastTouchTapTs = 0;
+        } else {
+          lastTouchTapTs = now;
+          lastTouchTapX = e.clientX;
+        }
+        hoverKm = null;
+        window.C2KTerrainEngine.showScrubHoverPin(0, 0, false);
+        const summary = formatMobileDefaultSummary();
+        if (summary) setText("mob-summary-text", summary);
+        updateReadoutBarText();
+        drawElevationProfile();
       }
     }
 
@@ -383,6 +432,9 @@ window.C2KBroadcastHud = (function () {
         const lon = parseFloat(row.getAttribute("data-lon"));
         const lat = parseFloat(row.getAttribute("data-lat"));
         if (!isNaN(lon) && !isNaN(lat)) {
+          if (window.innerWidth <= 1024 && window.C2KApp && window.C2KApp.closeMobileSheets) {
+            window.C2KApp.closeMobileSheets();
+          }
           window.C2KTerrainEngine.flyToCoordinate(lon, lat, 13.4, 62, -30);
         }
       });
@@ -627,7 +679,9 @@ window.C2KBroadcastHud = (function () {
 
       setText("strip-simon-summary", "Simon · " + rKm.toFixed(1) + " km · " + Math.round(runner.ele_m || 0) + "m");
       setText("strip-crew-summary", "Crew · " + (crew.course_km || 0).toFixed(1) + " km (Gap " + sepKm.toFixed(1) + "k)");
-      setText("mob-summary-text", "Simon " + rKm.toFixed(1) + "k (" + Math.round(runner.ele_m || 0) + "m) · Crew Gap " + sepKm.toFixed(1) + "k");
+      if (!(isDraggingProfile && hoverKm !== null)) {
+        setText("mob-summary-text", "Simon " + rKm.toFixed(1) + "k (" + Math.round(runner.ele_m || 0) + "m) · Gap " + sepKm.toFixed(1) + "k");
+      }
 
       updateReadoutBarText();
       renderToiletsAidList(rKm);
@@ -824,6 +878,9 @@ window.C2KBroadcastHud = (function () {
       item.addEventListener("click", function () {
         const lon = parseFloat(item.getAttribute("data-lon"));
         const lat = parseFloat(item.getAttribute("data-lat"));
+        if (window.innerWidth <= 1024 && window.C2KApp && window.C2KApp.closeMobileSheets) {
+          window.C2KApp.closeMobileSheets();
+        }
         window.C2KTerrainEngine.flyToCoordinate(lon, lat, 12.4, 62, -35);
       });
     });
@@ -835,10 +892,11 @@ window.C2KBroadcastHud = (function () {
     const h = cachedH;
     eleCtx.clearRect(0, 0, w, h);
 
-    const padL = 42;
-    const padR = 18;
-    const padT = 24;
-    const padB = 22;
+    const pads = getProfilePadding(w);
+    const padL = pads.padL;
+    const padR = pads.padR;
+    const padT = pads.padT;
+    const padB = pads.padB;
     const plotW = Math.max(10, w - padL - padR);
     const plotH = Math.max(10, h - padT - padB);
 
@@ -850,7 +908,7 @@ window.C2KBroadcastHud = (function () {
     const yOfEle = function (ele) { return padT + plotH - (Math.max(0, ele) / maxEle) * plotH; };
 
     // Subtle elevation gridlines
-    eleCtx.font = "600 9.5px 'JetBrains Mono', monospace";
+    eleCtx.font = pads.compact ? "600 8.5px 'JetBrains Mono', monospace" : "600 9.5px 'JetBrains Mono', monospace";
     eleCtx.lineWidth = 1;
     [0, 500, 1000, 1500, 2000].forEach(function (elev) {
       const y = yOfEle(elev);
@@ -861,7 +919,10 @@ window.C2KBroadcastHud = (function () {
       eleCtx.stroke();
       if (elev === 0 || elev === 1000 || elev === 2000) {
         eleCtx.fillStyle = "rgba(148, 163, 184, 0.85)";
-        eleCtx.fillText(elev === 0 ? "0 m" : elev.toLocaleString("en-AU"), 4, y + 3);
+        const lbl = pads.compact
+          ? (elev === 0 ? "0m" : (elev / 1000) + "k")
+          : (elev === 0 ? "0 m" : elev.toLocaleString("en-AU"));
+        eleCtx.fillText(lbl, pads.compact ? 2 : 4, y + 3);
       }
     });
 

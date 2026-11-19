@@ -309,23 +309,57 @@ window.C2KHybridThreeStage = (function () {
     startLoop();
   }
 
+  let reliefLoading = false;
+
+  function isMobileViewport() {
+    if (window.innerWidth <= 1024) return true;
+    return !!(window.matchMedia && window.matchMedia("(max-width: 1024px)").matches);
+  }
+
+  function isSaveDataEnabled() {
+    return !!(navigator.connection && navigator.connection.saveData);
+  }
+
+  function computeResponsiveFov(aspect) {
+    if (!aspect || aspect >= 1.0) return 38;
+    return Math.min(54, 38 / Math.pow(Math.max(0.38, aspect), 0.38));
+  }
+
+  function ensureReliefTextureLoaded() {
+    if (reliefTexture || reliefLoading) return;
+    reliefLoading = true;
+    loadImage("assets/corridor/relief-4k.jpg").then(function (rImg) {
+      reliefLoading = false;
+      reliefTexture = configureTexture(new THREE.Texture(rImg));
+      if (activeImageryMode === "relief" && terrainMat) {
+        terrainMat.map = reliefTexture;
+        terrainMat.needsUpdate = true;
+      }
+    }).catch(function () {
+      reliefLoading = false;
+    });
+  }
+
   function setupThreeScene() {
     const rect = getStageRect();
+    const aspect = rect.width / Math.max(1, rect.height);
+    const mobile = isMobileViewport();
+
     renderer = new THREE.WebGLRenderer({
       canvas: canvasEl,
       antialias: true,
       alpha: false,
-      powerPreference: "high-performance"
+      powerPreference: mobile ? "default" : "high-performance"
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.75 : 2));
     renderer.setSize(rect.width, rect.height, false);
     renderer.outputEncoding = THREE.sRGBEncoding;
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x06090f);
-    scene.fog = new THREE.FogExp2(0x070e1b, 0.0022);
+    scene.fog = new THREE.FogExp2(0x070e1b, aspect < 1.0 ? 0.0014 : 0.0022);
 
-    camera = new THREE.PerspectiveCamera(38, rect.width / rect.height, 0.4, 980);
+    camera = new THREE.PerspectiveCamera(computeResponsiveFov(aspect), aspect, 0.4, 1100);
     camera.position.set(42, 134, 188);
 
     controls = new THREE.OrbitControls(camera, canvasEl);
@@ -336,8 +370,9 @@ window.C2KHybridThreeStage = (function () {
     controls.panSpeed = 0.88;
     controls.maxPolarAngle = Math.PI * 0.48;
     controls.minDistance = 6.0;
-    controls.maxDistance = 320.0;
+    controls.maxDistance = 520.0;
     controls.target.set(2.0, -1.0, 12.0);
+    setOrbitDragMode(orbitDragMode);
     controls.update();
 
     controls.addEventListener("start", function () {
@@ -369,13 +404,26 @@ window.C2KHybridThreeStage = (function () {
     scene.add(reliefScaleGroup);
 
     window.addEventListener("resize", handleResize);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && isActive) {
+        lastLoopTs = performance.now();
+        startLoop();
+      }
+    });
   }
 
   function handleResize() {
     if (!stageWrapEl || !renderer || !camera) return;
     const rect = getStageRect();
-    camera.aspect = rect.width / rect.height;
+    const aspect = rect.width / Math.max(1, rect.height);
+    const mobile = isMobileViewport();
+    camera.aspect = aspect;
+    camera.fov = computeResponsiveFov(aspect);
     camera.updateProjectionMatrix();
+    if (scene && scene.fog) {
+      scene.fog.density = aspect < 1.0 ? 0.0014 : 0.0022;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.75 : 2));
     renderer.setSize(rect.width, rect.height, false);
     for (let i = 0; i < lineMaterials.length; i++) {
       lineMaterials[i].resolution.set(rect.width, rect.height);
@@ -389,7 +437,8 @@ window.C2KHybridThreeStage = (function () {
     });
     canvasEl.addEventListener("pointerup", function (e) {
       if (!mapPinPickCallback || !terrainMesh || !camera || !pointerDownXY) return;
-      if (Math.hypot(e.clientX - pointerDownXY.x, e.clientY - pointerDownXY.y) > 6) return;
+      const maxMove = e.pointerType && e.pointerType !== "mouse" ? 12 : 6;
+      if (Math.hypot(e.clientX - pointerDownXY.x, e.clientY - pointerDownXY.y) > maxMove) return;
       const rect = stageWrapEl.getBoundingClientRect();
       const ndc = new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -421,7 +470,8 @@ window.C2KHybridThreeStage = (function () {
 
   function configureTexture(tex) {
     tex.encoding = THREE.sRGBEncoding;
-    tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const maxAniso = isMobileViewport() ? 4 : 8;
+    tex.anisotropy = Math.min(maxAniso, renderer.capabilities.getMaxAnisotropy());
     tex.needsUpdate = true;
     return tex;
   }
@@ -465,33 +515,39 @@ window.C2KHybridThreeStage = (function () {
       }
       if (onReadyCb) onReadyCb();
 
-      // Background progressive upgrades (4k -> 6k + preloaded relief-4k)
-      loadImage("assets/corridor/sat-4k.jpg").then(function (img4) {
-        const tex4 = configureTexture(new THREE.Texture(img4));
-        if (activeSatTexture) activeSatTexture.dispose();
-        activeSatTexture = tex4;
-        if (activeImageryMode !== "relief" && terrainMat) {
-          terrainMat.map = tex4;
-          terrainMat.needsUpdate = true;
-        }
-        loadImage("assets/corridor/sat-6k.jpg").then(function (img6) {
-          const tex6 = configureTexture(new THREE.Texture(img6));
+      const mobile = isMobileViewport();
+      const saveData = isSaveDataEnabled();
+      const maxTexSize = (renderer && renderer.capabilities && renderer.capabilities.maxTextureSize) || 4096;
+
+      // Progressive upgrades: respect Data Saver and cap phones at 4K to protect cellular data & iOS WebGL VRAM
+      if (!saveData && maxTexSize >= 4096) {
+        loadImage("assets/corridor/sat-4k.jpg").then(function (img4) {
+          const tex4 = configureTexture(new THREE.Texture(img4));
           if (activeSatTexture) activeSatTexture.dispose();
-          activeSatTexture = tex6;
+          activeSatTexture = tex4;
           if (activeImageryMode !== "relief" && terrainMat) {
-            terrainMat.map = tex6;
+            terrainMat.map = tex4;
             terrainMat.needsUpdate = true;
           }
+          if (!mobile && maxTexSize >= 6144) {
+            loadImage("assets/corridor/sat-6k.jpg").then(function (img6) {
+              const tex6 = configureTexture(new THREE.Texture(img6));
+              if (activeSatTexture) activeSatTexture.dispose();
+              activeSatTexture = tex6;
+              if (activeImageryMode !== "relief" && terrainMat) {
+                terrainMat.map = tex6;
+                terrainMat.needsUpdate = true;
+              }
+            }).catch(function () {});
+          }
         }).catch(function () {});
-      }).catch(function () {});
+      }
 
-      loadImage("assets/corridor/relief-4k.jpg").then(function (rImg) {
-        reliefTexture = configureTexture(new THREE.Texture(rImg));
-        if (activeImageryMode === "relief" && terrainMat) {
-          terrainMat.map = reliefTexture;
-          terrainMat.needsUpdate = true;
-        }
-      }).catch(function () {});
+      if (!mobile && !saveData) {
+        ensureReliefTextureLoaded();
+      } else if (activeImageryMode === "relief") {
+        ensureReliefTextureLoaded();
+      }
     } catch (err) {
       console.error("[HybridThreeStage] Failed initializing 3D assets:", err);
       if (onReadyCb) onReadyCb();
@@ -911,6 +967,8 @@ window.C2KHybridThreeStage = (function () {
       if (reliefTexture) {
         terrainMat.map = reliefTexture;
         terrainMat.needsUpdate = true;
+      } else {
+        ensureReliefTextureLoaded();
       }
     } else if (activeSatTexture) {
       terrainMat.map = activeSatTexture;
@@ -1038,27 +1096,46 @@ window.C2KHybridThreeStage = (function () {
 
   function resetOverview(instant) {
     if (!camera || !controls) return;
-    const targetPos = new THREE.Vector3(42, 134, 188);
-    const targetLook = new THREE.Vector3(2.0, -1.0, 12.0);
+    const rect = getStageRect();
+    const aspect = rect.width / Math.max(1, rect.height);
+
+    const baseLook = new THREE.Vector3(2.0, -1.0, 12.0);
+    const baseOffset = new THREE.Vector3(40.0, 135.0, 176.0);
+
+    if (aspect < 1.05) {
+      baseOffset.x = 24.0;
+      // Scale distance smoothly so the full 241 km East-West corridor and endpoint callouts fit narrow portrait phones
+      const distScale = Math.min(1.84, Math.max(1.0, 1.15 / Math.pow(Math.max(0.40, aspect), 0.56)));
+      baseOffset.multiplyScalar(distScale);
+      // Shift look target slightly southward so the mountain corridor centers above the bottom dock
+      baseLook.z = 18.0;
+      baseLook.x = -1.0;
+    }
+
+    const targetPos = baseLook.clone().add(baseOffset);
     if (instant) {
       tweenState = null;
       setFlying(false);
       camera.position.copy(targetPos);
-      controls.target.copy(targetLook);
+      controls.target.copy(baseLook);
       controls.update();
     } else {
-      tweenCamera(targetPos, targetLook, 950);
+      tweenCamera(targetPos, baseLook, 950);
     }
   }
 
   function fitDualBounds(r, c) {
     if (!r || !c || !camera || !controls) return;
+    const rect = getStageRect();
+    const aspect = rect.width / Math.max(1, rect.height);
+    const portraitScale = aspect < 1.0 ? Math.min(1.55, 1.0 / Math.pow(Math.max(0.42, aspect), 0.48)) : 1.0;
+
     const wR = lonLatToWorldUnscaled(r.lon, r.lat, r.ele_m);
     const wC = lonLatToWorldUnscaled(c.lon, c.lat, c.ele_m);
     const mx = (wR[0] + wC[0]) * 0.5;
     const my = Math.max(wR[1], wC[1]) * exaggeration * 0.5;
     const mz = (wR[2] + wC[2]) * 0.5;
-    const span = Math.max(24, Math.hypot(wR[0] - wC[0], wR[2] - wC[2]) * 1.9);
+    const span = Math.max(24, Math.hypot(wR[0] - wC[0], wR[2] - wC[2]) * 1.9) * portraitScale;
     tweenCamera(
       new THREE.Vector3(mx + span * 0.42, my + span * 0.65, mz + span * 0.78),
       new THREE.Vector3(mx, my, mz),
@@ -1098,6 +1175,11 @@ window.C2KHybridThreeStage = (function () {
       controls.mouseButtons = orbitDragMode
         ? { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }
         : { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+      if (THREE.TOUCH) {
+        controls.touches = orbitDragMode
+          ? { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+          : { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+      }
     }
     return orbitDragMode;
   }
@@ -1223,7 +1305,7 @@ window.C2KHybridThreeStage = (function () {
 
   let lastLoopTs = performance.now();
   function renderLoop(now) {
-    if (!isActive) {
+    if (!isActive || document.hidden) {
       rafId = null;
       return;
     }

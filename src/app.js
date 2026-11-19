@@ -6,6 +6,7 @@ window.C2KApp = (function () {
   let courseData = null;
   let activeLocMethod = "checkpoint";
   let parsedGpxPoints = [];
+  let closeMobileSheetsFn = null;
 
   function syncSliderCssVars(slider) {
     if (!slider) return;
@@ -55,16 +56,27 @@ window.C2KApp = (function () {
 
     window.C2KBroadcastHud.init(courseData);
     window.C2KWeatherClouds3D.init("atmosphere-canvas", courseData.weather_zones || []);
-
-    window.C2KTerrainEngine.init("map-container", courseData, function () {
-      window.C2KTelemetryClient.init(courseData, function (runner, crew, elapsedHours, mode) {
-        window.C2KTerrainEngine.updateEntities(runner, crew);
-        window.C2KBroadcastHud.updateHud(runner, crew, elapsedHours, mode);
-      });
-    });
-
     bindUiControls();
     populateCheckpointSelect();
+
+    let telemetryStarted = false;
+    function startTelemetryFeed() {
+      if (telemetryStarted) return;
+      telemetryStarted = true;
+      window.C2KTelemetryClient.init(courseData, function (runner, crew, elapsedHours, mode) {
+        if (window.C2KTerrainEngine && window.C2KTerrainEngine.updateEntities) {
+          window.C2KTerrainEngine.updateEntities(runner, crew);
+        }
+        window.C2KBroadcastHud.updateHud(runner, crew, elapsedHours, mode);
+      });
+    }
+
+    try {
+      window.C2KTerrainEngine.init("map-container", courseData, startTelemetryFeed);
+    } catch (err) {
+      console.error("[C2K] 3D map init warning - continuing in HUD telemetry mode:", err);
+      startTelemetryFeed();
+    }
   }
 
   function parseGpxXmlClient(xmlText) {
@@ -195,26 +207,122 @@ window.C2KApp = (function () {
       });
     }
 
+    // Dynamic Mobile Chrome Height Observer (prevents overlap at any font/pointer scale)
+    const topBarEl = document.querySelector(".top-broadcast-bar");
+    const mobCrewBarEl = document.getElementById("mobile-crew-bar");
+    const bottomDockEl = document.getElementById("bottom-broadcast-dock");
+    const mobRightTitleEl = document.getElementById("mobile-right-sheet-title");
+    const btnMobToggleProfile = document.getElementById("btn-mob-toggle-profile");
+
+    function syncMobileChromeMetrics() {
+      const rootStyle = document.documentElement.style;
+      if (topBarEl) {
+        const h = Math.round(topBarEl.getBoundingClientRect().height);
+        if (h > 0) rootStyle.setProperty("--mob-top-bar-h", h + "px");
+      }
+      if (mobCrewBarEl) {
+        const h = Math.round(mobCrewBarEl.getBoundingClientRect().height);
+        if (h > 0) rootStyle.setProperty("--mob-crew-bar-h", h + "px");
+      }
+      if (bottomDockEl) {
+        const h = Math.round(bottomDockEl.getBoundingClientRect().height);
+        if (h > 0) rootStyle.setProperty("--mob-bottom-dock-h", h + "px");
+      }
+      if (rightDockEl && document.body.getAttribute("data-mobile-sheet") === "cams") {
+        const h = Math.round(rightDockEl.getBoundingClientRect().height);
+        if (h > 0) rootStyle.setProperty("--mob-cams-dock-h", h + "px");
+      }
+    }
+
+    if (typeof ResizeObserver === "function") {
+      const ro = new ResizeObserver(function () {
+        syncMobileChromeMetrics();
+      });
+      [topBarEl, mobCrewBarEl, bottomDockEl, rightDockEl].forEach(function (el) {
+        if (el) ro.observe(el);
+      });
+    }
+    window.addEventListener("resize", syncMobileChromeMetrics);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", syncMobileChromeMetrics);
+    }
+
+    function setMobileSheet(nextSheet) {
+      const sheet = nextSheet || "map";
+      document.body.setAttribute("data-mobile-sheet", sheet);
+      document.querySelectorAll("button[data-mobile-sheet]").forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-mobile-sheet") === sheet);
+      });
+      if (mobRightTitleEl) {
+        if (sheet === "cams") mobRightTitleEl.textContent = "CAMERAS & MAP LAYERS";
+        else if (sheet === "weather") mobRightTitleEl.textContent = "5-ZONE LIVE WEATHER";
+        else if (sheet === "toilets") mobRightTitleEl.textContent = "OFFICIAL TOILETS & AID";
+      }
+      requestAnimationFrame(function () {
+        syncMobileChromeMetrics();
+        if (sheet === "map" && !document.body.classList.contains("mob-profile-collapsed")) {
+          if (window.C2KBroadcastHud && window.C2KBroadcastHud.resizeElevationCanvas) {
+            window.C2KBroadcastHud.resizeElevationCanvas();
+            window.C2KBroadcastHud.drawElevationProfile();
+          }
+        }
+      });
+    }
+
     // Mobile Sheet Navigation
-    document.body.setAttribute("data-mobile-sheet", "map");
-    document.querySelectorAll("[data-mobile-sheet]").forEach(function (btn) {
+    setMobileSheet("map");
+    document.querySelectorAll("button[data-mobile-sheet]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        const sheet = btn.getAttribute("data-mobile-sheet") || "map";
-        document.body.setAttribute("data-mobile-sheet", sheet);
-        document.querySelectorAll("[data-mobile-sheet]").forEach(function (b) {
-          b.classList.toggle("active", b === btn);
-        });
+        const requested = btn.getAttribute("data-mobile-sheet") || "map";
+        const current = document.body.getAttribute("data-mobile-sheet") || "map";
+        const target = requested !== "map" && requested === current ? "map" : requested;
+        setMobileSheet(target);
       });
     });
 
     function closeAllDrawers() {
-      document.body.setAttribute("data-mobile-sheet", "map");
-      document.querySelectorAll("[data-mobile-sheet]").forEach(function (b) {
-        b.classList.toggle("active", b.getAttribute("data-mobile-sheet") === "map");
+      setMobileSheet("map");
+    }
+    closeMobileSheetsFn = closeAllDrawers;
+
+    document.querySelectorAll("[data-close-mobile-sheet]").forEach(function (btn) {
+      btn.addEventListener("click", closeAllDrawers);
+    });
+
+    // Collapsible Mobile Elevation Profile Toggle
+    function setMobileProfileCollapsed(collapsed) {
+      document.body.classList.toggle("mob-profile-collapsed", !!collapsed);
+      if (btnMobToggleProfile) {
+        btnMobToggleProfile.classList.toggle("active-cyan", !collapsed);
+        btnMobToggleProfile.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      }
+      requestAnimationFrame(function () {
+        syncMobileChromeMetrics();
+        if (!collapsed && window.C2KBroadcastHud && window.C2KBroadcastHud.resizeElevationCanvas) {
+          window.C2KBroadcastHud.resizeElevationCanvas();
+          window.C2KBroadcastHud.drawElevationProfile();
+        }
+      });
+    }
+
+    if (window.innerWidth <= 960 && window.innerHeight <= 520) {
+      setMobileProfileCollapsed(true);
+    } else {
+      setMobileProfileCollapsed(false);
+    }
+
+    if (btnMobToggleProfile) {
+      btnMobToggleProfile.addEventListener("click", function () {
+        const nextCollapsed = !document.body.classList.contains("mob-profile-collapsed");
+        if (!nextCollapsed && document.body.getAttribute("data-mobile-sheet") !== "map") {
+          setMobileSheet("map");
+        }
+        setMobileProfileCollapsed(nextCollapsed);
       });
     }
 
     applyDockStates();
+    syncMobileChromeMetrics();
 
     // Basemap Style Switcher (3D Satellite / Relief Map / Esri)
     document.querySelectorAll("[data-imagery]").forEach(function (btn) {
@@ -243,7 +351,7 @@ window.C2KApp = (function () {
       });
     }
 
-    // Compass Reset, Zoom In/Out & Mouse Orbit/Pan Switch
+    // Compass Reset, Zoom In/Out & Mouse/Touch Orbit/Pan Switch
     const btnCompass = document.getElementById("btn-compass-reset");
     if (btnCompass) {
       btnCompass.addEventListener("click", function () {
@@ -276,8 +384,8 @@ window.C2KApp = (function () {
         btnDragMode.textContent = nextOrbit ? "Orbit" : "Pan";
         if (gestureHint) {
           gestureHint.textContent = nextOrbit
-            ? "Drag to orbit 3D · Right-drag or Shift-drag to pan · Scroll to zoom"
-            : "Drag to pan · Right-drag or Ctrl-drag to orbit 3D · Scroll to zoom";
+            ? "Drag to orbit 3D · 2-finger pinch/pan or right-drag to pan · Scroll to zoom"
+            : "Drag to pan · 2-finger twist/pinch or right-drag to orbit 3D · Scroll to zoom";
         }
       });
     }
@@ -343,6 +451,9 @@ window.C2KApp = (function () {
     document.querySelectorAll("[data-cam-mode]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         const mode = btn.getAttribute("data-cam-mode");
+        if (window.innerWidth <= 1024) {
+          closeAllDrawers();
+        }
         if (mode === "flyover" && window.C2KTerrainEngine.getCameraMode() === "flyover") {
           window.C2KTerrainEngine.setCameraMode("free");
           return;
@@ -356,6 +467,9 @@ window.C2KApp = (function () {
       btn.addEventListener("click", function () {
         const km = parseFloat(btn.getAttribute("data-fly-km"));
         const pt = window.C2KTerrainEngine.getPointAtKm(km);
+        if (window.innerWidth <= 1024) {
+          closeAllDrawers();
+        }
         if (pt) {
           window.C2KTerrainEngine.flyToCoordinate(pt[0], pt[1], 13.7, 66, pt[5]);
         }
@@ -802,6 +916,9 @@ window.C2KApp = (function () {
         } else {
           modal.removeAttribute("open");
         }
+        if (window.innerWidth <= 1024 && closeMobileSheetsFn) {
+          closeMobileSheetsFn();
+        }
         if (window.C2KTerrainEngine && window.C2KTerrainEngine.flyToCoordinate) {
           window.C2KTerrainEngine.flyToCoordinate(selectedStopForFly.lon, selectedStopForFly.lat, 14.4, 62, -25);
         }
@@ -840,6 +957,9 @@ window.C2KApp = (function () {
     getCurrentCrewState: function () {
       return window.C2KTelemetryClient ? window.C2KTelemetryClient.getCrewState() : null;
     },
-    openStopDetailModal: openStopDetailModal
+    openStopDetailModal: openStopDetailModal,
+    closeMobileSheets: function () {
+      if (closeMobileSheetsFn) closeMobileSheetsFn();
+    }
   };
 })();

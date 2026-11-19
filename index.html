@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#06090f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Coast to Kosciuszko (C2K) 240km Ultramarathon - 3D Live Broadcast Tracker, 2026 Cut-Off Gates, Official Stops &amp; Live Weather" />
   <title>COAST TO KOSCIUSZKO 240KM - 3D Live Broadcast Tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -72,7 +76,7 @@
 
         <div class="top-right-actions">
           <button id="btn-toggle-all-hud" type="button" class="btn-chip hud-hide-btn" aria-pressed="false" title="Collapse both side docks so the 3D map breathes (Shortcut: H)">Hide Docks</button>
-          <button id="btn-open-checkin" type="button" class="btn-crew-checkin">Crew Check-In</button>
+          <button id="btn-open-checkin" type="button" class="btn-crew-checkin"><span class="checkin-lbl-full">Crew Check-In</span><span class="checkin-lbl-short">Crew Pin</span></button>
         </div>
       </header>
 
@@ -81,6 +85,10 @@
         <div class="dock-rail-bar">
           <span class="dock-rail-title">LIVE TELEMETRY &amp; GATES</span>
           <button id="btn-collapse-left-dock" type="button" class="dock-collapse-btn" aria-expanded="true" aria-controls="left-telemetry-dock" title="Collapse Left Dock">Hide &lt;</button>
+        </div>
+        <div class="mobile-sheet-header">
+          <span class="mobile-sheet-title">LIVE TELEMETRY &amp; CUT-OFF GATES</span>
+          <button type="button" class="btn-chip mobile-sheet-close" data-close-mobile-sheet>3D Map &#10005;</button>
         </div>
 
         <!-- Simon + Crew Cards -->
@@ -205,6 +213,10 @@
           <button id="btn-collapse-right-dock" type="button" class="dock-collapse-btn" aria-expanded="true" aria-controls="right-broadcast-dock" title="Collapse Right Dock">&gt; Hide</button>
           <span class="dock-rail-title">CAMERAS, WX &amp; TOILETS</span>
         </div>
+        <div class="mobile-sheet-header">
+          <span id="mobile-right-sheet-title" class="mobile-sheet-title">CAMERAS, LAYERS &amp; STOPS</span>
+          <button type="button" class="btn-chip mobile-sheet-close" data-close-mobile-sheet>3D Map &#10005;</button>
+        </div>
 
         <section class="hud-panel cam-director-panel">
           <div class="panel-header">
@@ -260,11 +272,11 @@
         <button id="btn-zoom-out" type="button" class="cam-icon-btn" aria-label="Zoom out" title="Zoom out">
           <span aria-hidden="true">-</span>
         </button>
-        <button id="btn-drag-mode" type="button" class="cam-mode-pill is-orbit" aria-pressed="true" title="Toggle mouse left-drag between 3D Orbit and Pan">Orbit</button>
+        <button id="btn-drag-mode" type="button" class="cam-mode-pill is-orbit" aria-pressed="true" title="Toggle 1-finger / left-drag between 3D Orbit and Pan">Orbit</button>
       </div>
 
       <!-- Bottom Broadcast Dock: 46h Sim Scrubber + 241.25 km Elevation Profile -->
-      <footer class="bottom-broadcast-dock">
+      <footer id="bottom-broadcast-dock" class="bottom-broadcast-dock">
         <div class="sim-scrubber-bar">
           <div class="sim-left-controls">
             <button id="btn-sim-play" type="button" class="btn-chip">Play 46h Sim</button>
@@ -282,23 +294,28 @@
           <div id="sim-clock-readout" class="sim-clock-readout">+06h 12m · FRI 11:42</div>
         </div>
 
-        <div class="elevation-canvas-wrap" title="Hover to inspect elevation &amp; grade - Drag to scrub Simon &amp; Crew - Double-click to zoom MapLibre 3D">
+        <div class="elevation-canvas-wrap" title="Hover or drag to inspect elevation &amp; scrub Simon &amp; Crew - Double-tap or double-click to fly 3D camera">
           <canvas id="elevation-canvas"></canvas>
         </div>
       </footer>
     </main>
 
-    <!-- Mobile Sticky Crew Navigation Bar -->
-    <nav class="mobile-crew-bar" aria-label="Mobile Broadcast Controls">
-      <div id="mob-summary-text" class="mob-summary-pill">Simon 0.0k (4m) · Crew Gap 0.0k</div>
+    <!-- Mobile Sticky Navigation Bar -->
+    <nav id="mobile-crew-bar" class="mobile-crew-bar" aria-label="Mobile Broadcast Controls">
+      <div class="mob-top-row">
+        <div id="mob-summary-text" class="mob-summary-pill">Simon 0.0k (4m) · Gap 0.0k</div>
+        <div class="mob-quick-pills">
+          <button id="btn-mob-toggle-profile" type="button" class="btn-chip mob-mini-chip active-cyan" aria-expanded="true" aria-controls="bottom-broadcast-dock" title="Show or hide elevation profile chart">Profile</button>
+          <button type="button" class="btn-chip mob-mini-chip active" data-telemetry-mode="SIM">SIM</button>
+          <button type="button" class="btn-chip mob-mini-chip" data-telemetry-mode="LIVE">LIVE</button>
+        </div>
+      </div>
       <div class="mob-btn-row">
         <button type="button" class="btn-chip active" data-mobile-sheet="map">3D Map</button>
-        <button type="button" class="btn-chip" data-mobile-sheet="telemetry">Telemetry</button>
-        <button type="button" class="btn-chip" data-mobile-sheet="toilets">Toilets</button>
-        <button type="button" class="btn-chip" data-mobile-sheet="cams">Cams &amp; Layers</button>
+        <button type="button" class="btn-chip" data-mobile-sheet="telemetry">Stats</button>
+        <button type="button" class="btn-chip" data-mobile-sheet="toilets">Stops</button>
+        <button type="button" class="btn-chip" data-mobile-sheet="cams">Layers</button>
         <button type="button" class="btn-chip" data-mobile-sheet="weather">Weather</button>
-        <button type="button" class="btn-chip active" data-telemetry-mode="SIM">SIM</button>
-        <button type="button" class="btn-chip" data-telemetry-mode="LIVE">LIVE</button>
       </div>
     </nav>
   </div>

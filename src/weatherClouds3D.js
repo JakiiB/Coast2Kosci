@@ -20,6 +20,7 @@ window.C2KWeatherClouds3D = (function () {
   let cloudClusters = [];
   let lastTime = performance.now();
   let currentSolarAltDeg = 35.0;
+  let canvasCleared = false;
 
   function buildCloudSprite(rCol, gCol, bCol) {
     const off = document.createElement("canvas");
@@ -72,11 +73,14 @@ window.C2KWeatherClouds3D = (function () {
 
   function resizeCanvas() {
     if (!canvas) return;
-    canvas.width = Math.max(320, Math.floor(window.innerWidth * RENDER_SCALE));
-    canvas.height = Math.max(200, Math.floor(window.innerHeight * RENDER_SCALE));
+    const stageW = (canvas.parentElement && canvas.parentElement.clientWidth) || window.innerWidth;
+    const stageH = (canvas.parentElement && canvas.parentElement.clientHeight) || window.innerHeight;
+    canvas.width = Math.max(240, Math.floor(stageW * RENDER_SCALE));
+    canvas.height = Math.max(180, Math.floor(stageH * RENDER_SCALE));
     if (ctx) {
       ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
     }
+    canvasCleared = false;
   }
 
   function seedGeographicClouds() {
@@ -283,59 +287,76 @@ window.C2KWeatherClouds3D = (function () {
     const dt = Math.min(0.05, (now - lastTime) / 1000);
     lastTime = now;
 
+    if (document.hidden) {
+      requestAnimationFrame(renderLoop);
+      return;
+    }
+
     if (ctx && canvas) {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+      const w = (canvas.parentElement && canvas.parentElement.clientWidth) || window.innerWidth;
+      const h = (canvas.parentElement && canvas.parentElement.clientHeight) || window.innerHeight;
+      const map = window.C2KTerrainEngine ? window.C2KTerrainEngine.getMap() : null;
+      const zoom = map ? map.getZoom() : 9.0;
+      const needClouds = !!(map && cloudsEnabled && zoom <= 12.2);
+      const needNight = !!(map && currentSolarAltDeg <= 2.0 && window.C2KApp);
+
+      if (!needClouds && !needNight) {
+        if (!canvasCleared) {
+          ctx.clearRect(0, 0, w, h);
+          canvasCleared = true;
+        }
+        requestAnimationFrame(renderLoop);
+        return;
+      }
+
+      canvasCleared = false;
       ctx.clearRect(0, 0, w, h);
 
-      const map = window.C2KTerrainEngine ? window.C2KTerrainEngine.getMap() : null;
-      if (map) {
-        const zoom = map.getZoom();
+      if (needClouds) {
+        const sprite = currentSolarAltDeg < -3
+          ? sprites.night
+          : currentSolarAltDeg <= 13
+            ? sprites.golden
+            : sprites.day;
 
-        if (cloudsEnabled && zoom <= 12.2) {
-          const sprite = currentSolarAltDeg < -3
-            ? sprites.night
-            : currentSolarAltDeg <= 13
-              ? sprites.golden
-              : sprites.day;
+        // Fade clouds smoothly when zooming in so close-up terrain & trail have zero 2D canvas overdraw
+        const zoomFade = zoom > 10.8 ? Math.max(0.0, 1.0 - (zoom - 10.8) * 0.72) : 1.0;
+        const pitchSin = Math.sin((map.getPitch() * Math.PI) / 180.0);
+        const zoomScale = Math.min(2.8, Math.max(0.45, Math.pow(2, zoom - 9.8)));
 
-          // Fade clouds smoothly when zooming in so close-up terrain & trail have zero 2D canvas overdraw
-          const zoomFade = zoom > 10.8 ? Math.max(0.0, 1.0 - (zoom - 10.8) * 0.72) : 1.0;
-          const pitchSin = Math.sin((map.getPitch() * Math.PI) / 180.0);
-          const zoomScale = Math.min(2.8, Math.max(0.45, Math.pow(2, zoom - 9.8)));
+        ctx.save();
+        for (let i = 0; i < cloudClusters.length; i++) {
+          const cl = cloudClusters[i];
+          const zone = weatherZones[cl.zoneIdx] || weatherZones[0];
+          const winfo = (zone && zone.weather) || { cloudcover_pct: 55, winddir_deg: 200, windspeed_kmh: 18 };
+          const coverFrac = Math.max(0.2, Math.min(1.0, (winfo.cloudcover_pct || 50) / 100.0));
 
-          ctx.save();
-          for (let i = 0; i < cloudClusters.length; i++) {
-            const cl = cloudClusters[i];
-            const zone = weatherZones[cl.zoneIdx] || weatherZones[0];
-            const winfo = (zone && zone.weather) || { cloudcover_pct: 55, winddir_deg: 200, windspeed_kmh: 18 };
-            const coverFrac = Math.max(0.2, Math.min(1.0, (winfo.cloudcover_pct || 50) / 100.0));
+          const windRad = (((winfo.winddir_deg || 200) + 180) % 360) * (Math.PI / 180.0);
+          const speedDegPerSec = (winfo.windspeed_kmh || 16) * 0.00004;
+          cl.lon += Math.sin(windRad) * speedDegPerSec * dt;
+          cl.lat += Math.cos(windRad) * speedDegPerSec * dt;
 
-            const windRad = (((winfo.winddir_deg || 200) + 180) % 360) * (Math.PI / 180.0);
-            const speedDegPerSec = (winfo.windspeed_kmh || 16) * 0.00004;
-            cl.lon += Math.sin(windRad) * speedDegPerSec * dt;
-            cl.lat += Math.cos(windRad) * speedDegPerSec * dt;
-
-            if (Math.abs(cl.lon - cl.baseLon) > 0.35 || Math.abs(cl.lat - cl.baseLat) > 0.25) {
-              cl.lon = cl.baseLon - Math.sin(windRad) * 0.25;
-              cl.lat = cl.baseLat - Math.cos(windRad) * 0.20;
-            }
-
-            const scr = map.project([cl.lon, cl.lat]);
-            const altOffsetPx = (cl.altitudeM / 1000.0) * zoomScale * 22.0 * pitchSin;
-            const cx = scr.x;
-            const cy = scr.y - altOffsetPx;
-
-            if (cx < -240 || cx > w + 240 || cy < -180 || cy > h + 180) continue;
-
-            const drawW = 210 * cl.sizeScale * zoomScale;
-            const drawH = 140 * cl.sizeScale * zoomScale;
-            ctx.globalAlpha = Math.min(0.55, coverFrac * zoomFade * 0.52);
-            ctx.drawImage(sprite, cx - drawW * 0.5, cy - drawH * 0.5, drawW, drawH);
+          if (Math.abs(cl.lon - cl.baseLon) > 0.35 || Math.abs(cl.lat - cl.baseLat) > 0.25) {
+            cl.lon = cl.baseLon - Math.sin(windRad) * 0.25;
+            cl.lat = cl.baseLat - Math.cos(windRad) * 0.20;
           }
-          ctx.restore();
-        }
 
+          const scr = map.project([cl.lon, cl.lat]);
+          const altOffsetPx = (cl.altitudeM / 1000.0) * zoomScale * 22.0 * pitchSin;
+          const cx = scr.x;
+          const cy = scr.y - altOffsetPx;
+
+          if (cx < -240 || cx > w + 240 || cy < -180 || cy > h + 180) continue;
+
+          const drawW = 210 * cl.sizeScale * zoomScale;
+          const drawH = 140 * cl.sizeScale * zoomScale;
+          ctx.globalAlpha = Math.min(0.55, coverFrac * zoomFade * 0.52);
+          ctx.drawImage(sprite, cx - drawW * 0.5, cy - drawH * 0.5, drawW, drawH);
+        }
+        ctx.restore();
+      }
+
+      if (needNight) {
         renderNightBeams(map, w, h);
       }
     }
@@ -345,6 +366,7 @@ window.C2KWeatherClouds3D = (function () {
 
   function setCloudsEnabled(val) {
     cloudsEnabled = !!val;
+    canvasCleared = false;
   }
 
   function setRadarEnabled(val) {

@@ -784,6 +784,7 @@ window.C2KTerrainEngine = (function () {
     }
 
     // Stage B: Quiet MapLibre GL street satellite engine underneath
+    const isMobileStage = window.innerWidth <= 1024;
     map = new maplibregl.Map({
       container: containerId,
       style: buildStyleSpec(),
@@ -795,10 +796,10 @@ window.C2KTerrainEngine = (function () {
       pitch: 48,
       bearing: -24,
       maxPitch: 78,
-      antialias: true,
+      antialias: !isMobileStage,
       fadeDuration: 120,
-      maxTileCacheSize: 1200,
-      maxTileCacheZoomLevels: 6,
+      maxTileCacheSize: isMobileStage ? 240 : 1200,
+      maxTileCacheZoomLevels: isMobileStage ? 4 : 6,
       cancelPendingTileRequestsWhileZooming: true,
       attributionControl: false,
       hash: false
@@ -1194,8 +1195,22 @@ window.C2KTerrainEngine = (function () {
             bounds.extend([c.lon, c.lat]);
             isProgrammaticZoomIn = true;
             map.once("moveend", function () { isProgrammaticZoomIn = false; });
+            const isNarrow = window.innerWidth <= 1024;
+            const fitPad = isNarrow
+              ? {
+                  top: 76,
+                  bottom: document.body.classList.contains("mob-profile-collapsed") ? 104 : 228,
+                  left: 34,
+                  right: 34
+                }
+              : {
+                  top: 90,
+                  bottom: 220,
+                  left: document.body.classList.contains("left-dock-collapsed") ? 60 : 360,
+                  right: document.body.classList.contains("right-dock-collapsed") ? 60 : 340
+                };
             map.fitBounds(bounds, {
-              padding: { top: 90, bottom: 220, left: 360, right: 340 },
+              padding: fitPad,
               pitch: 58,
               maxZoom: 14.0,
               duration: 1100
@@ -1308,7 +1323,7 @@ window.C2KTerrainEngine = (function () {
     const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
     lastFrameTime = now;
 
-    if (activeEngine === "maplibre" && map && window.C2KApp && !map.isMoving() && !dragAction) {
+    if (!document.hidden && activeEngine === "maplibre" && map && window.C2KApp && !map.isMoving() && !dragAction) {
       if (cameraMode === "follow-simon") {
         const r = window.C2KApp.getCurrentRunnerState();
         if (r) {

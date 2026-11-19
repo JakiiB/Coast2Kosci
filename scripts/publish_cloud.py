@@ -6,6 +6,7 @@ Works identically on KINOVO (Windows) and Antigravity Cloud Remote Agents (Linux
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import re
@@ -149,8 +150,16 @@ def resolve_github_auth(root: Path) -> tuple[str, str, str]:
     """Return (token, user_hint, source_label) without logging secret values."""
     env_token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
     env_user = (os.environ.get("GITHUB_USER") or "").strip()
+    fallback_auth: tuple[str, str, str] | None = None
     if env_token:
-        return env_token, env_user or REPO_OWNER, "environment variable"
+        try:
+            _, uinfo = github_api_request("GET", "/user", env_token)
+            detected = str(uinfo.get("login") or env_user or "").strip()
+            if detected.lower() == REPO_OWNER.lower():
+                return env_token, detected, "environment variable"
+            fallback_auth = (env_token, detected or REPO_OWNER, "environment variable")
+        except Exception:
+            fallback_auth = (env_token, env_user or REPO_OWNER, "environment variable")
 
     candidates: list[Path] = []
     if os.environ.get("CLOUD_KEYS_PATH"):
@@ -177,6 +186,9 @@ def resolve_github_auth(root: Path) -> tuple[str, str, str]:
         if tok:
             usr = str(data.get("GITHUB_USER") or REPO_OWNER).strip()
             return tok, usr, "gdrive download -> cloud_keys.json"
+
+    if fallback_auth is not None:
+        return fallback_auth
 
     gh_candidates = [shutil.which("gh"), str(Path.home() / ".gemini" / "bin" / "gh.exe")]
     for gh_bin in gh_candidates:
@@ -306,6 +318,141 @@ def ensure_git_identity(cwd: Path, username: str) -> None:
         run_git_local(["config", "user.email", DEFAULT_GIT_EMAIL], cwd)
 
 
+def _git_blob_sha1(raw: bytes) -> str:
+    header = f"blob {len(raw)}\0".encode("ascii")
+    return hashlib.sha1(header + raw).hexdigest()
+
+
+def _upload_blob_api(raw: bytes, token: str) -> str:
+    b64 = base64.b64encode(raw).decode("ascii")
+    _, res = github_api_request(
+        "POST",
+        f"/repos/{FULL_REPO}/git/blobs",
+        token,
+        {"content": b64, "encoding": "base64"},
+    )
+    return str(res["sha"])
+
+
+def _fetch_remote_tree_shas(branch: str, token: str) -> tuple[str | None, str | None, dict[str, str]]:
+    try:
+        _, ref_info = github_api_request("GET", f"/repos/{FULL_REPO}/git/ref/heads/{branch}", token)
+        commit_sha = str((ref_info.get("object") or {}).get("sha") or "")
+        if not commit_sha:
+            return None, None, {}
+        _, commit_info = github_api_request("GET", f"/repos/{FULL_REPO}/git/commits/{commit_sha}", token)
+        tree_sha = str((commit_info.get("tree") or {}).get("sha") or "")
+        _, tree_info = github_api_request("GET", f"/repos/{FULL_REPO}/git/trees/{tree_sha}?recursive=1", token)
+        sha_map: dict[str, str] = {}
+        for entry in tree_info.get("tree") or []:
+            if entry.get("type") == "blob" and entry.get("path") and entry.get("sha"):
+                sha_map[str(entry["path"])] = str(entry["sha"])
+        return commit_sha, tree_sha, sha_map
+    except RuntimeError as exc:
+        if "HTTP 404" in str(exc) or "HTTP 409" in str(exc):
+            return None, None, {}
+        raise
+
+
+def _sync_main_via_api(root: Path, token: str, message: str, force_main: bool) -> None:
+    parent_sha, base_tree_sha, remote_shas = _fetch_remote_tree_shas("main", token)
+    ls_res = run_git_local(["ls-files", "-z", "-s"], root)
+    local_entries: dict[str, str] = {}
+    for rec in ls_res.stdout.split("\0"):
+        if not rec.strip():
+            continue
+        meta_part, rel_path = rec.split("\t", 1)
+        mode = meta_part.split()[0]
+        local_entries[rel_path] = mode if mode in ("100644", "100755") else "100644"
+
+    tree_updates: list[dict] = []
+    for rel_path, mode in sorted(local_entries.items()):
+        raw = (root / rel_path).read_bytes()
+        local_sha = _git_blob_sha1(raw)
+        if remote_shas.get(rel_path) == local_sha:
+            continue
+        blob_sha = _upload_blob_api(raw, token)
+        tree_updates.append({"path": rel_path, "mode": mode, "type": "blob", "sha": blob_sha})
+
+    for remote_path in sorted(set(remote_shas.keys()) - set(local_entries.keys())):
+        tree_updates.append({"path": remote_path, "mode": "100644", "type": "blob", "sha": None})
+
+    if not tree_updates and parent_sha:
+        print(f"Remote {FULL_REPO} (main) already matches workspace tree.")
+        return
+
+    tree_payload: dict = {"tree": tree_updates}
+    if base_tree_sha:
+        tree_payload["base_tree"] = base_tree_sha
+    _, new_tree = github_api_request("POST", f"/repos/{FULL_REPO}/git/trees", token, tree_payload)
+
+    commit_payload: dict = {
+        "message": message,
+        "tree": str(new_tree["sha"]),
+        "parents": [parent_sha] if parent_sha else [],
+    }
+    _, new_commit = github_api_request("POST", f"/repos/{FULL_REPO}/git/commits", token, commit_payload)
+    new_commit_sha = str(new_commit["sha"])
+
+    if parent_sha:
+        github_api_request(
+            "PATCH",
+            f"/repos/{FULL_REPO}/git/refs/heads/main",
+            token,
+            {"sha": new_commit_sha, "force": bool(force_main)},
+        )
+    else:
+        github_api_request(
+            "POST",
+            f"/repos/{FULL_REPO}/git/refs",
+            token,
+            {"ref": "refs/heads/main", "sha": new_commit_sha},
+        )
+
+    # Align local git branch with remote commit when public fetch is reachable
+    fetch_res = run_git_local(["fetch", "origin", "main"], root, check=False)
+    if fetch_res.returncode == 0:
+        run_git_local(["reset", "--mixed", "origin/main"], root, check=False)
+
+
+def _deploy_pages_via_api(stage_dir: Path, token: str, message: str) -> None:
+    existing_commit_sha, _, remote_shas = _fetch_remote_tree_shas("gh-pages", token)
+    tree_entries: list[dict] = []
+    for p in sorted(stage_dir.rglob("*")):
+        if not p.is_file():
+            continue
+        rel_posix = p.relative_to(stage_dir).as_posix()
+        if rel_posix.startswith(".git/") or rel_posix == ".git":
+            continue
+        raw = p.read_bytes()
+        local_sha = _git_blob_sha1(raw)
+        blob_sha = local_sha if remote_shas.get(rel_posix) == local_sha else _upload_blob_api(raw, token)
+        tree_entries.append({"path": rel_posix, "mode": "100644", "type": "blob", "sha": blob_sha})
+
+    _, new_tree = github_api_request("POST", f"/repos/{FULL_REPO}/git/trees", token, {"tree": tree_entries})
+    _, new_commit = github_api_request(
+        "POST",
+        f"/repos/{FULL_REPO}/git/commits",
+        token,
+        {"message": message, "tree": str(new_tree["sha"]), "parents": []},
+    )
+    new_commit_sha = str(new_commit["sha"])
+    if existing_commit_sha:
+        github_api_request(
+            "PATCH",
+            f"/repos/{FULL_REPO}/git/refs/heads/gh-pages",
+            token,
+            {"sha": new_commit_sha, "force": True},
+        )
+    else:
+        github_api_request(
+            "POST",
+            f"/repos/{FULL_REPO}/git/refs",
+            token,
+            {"ref": "refs/heads/gh-pages", "sha": new_commit_sha},
+        )
+
+
 def sync_main_branch(root: Path, token: str, login: str, message: str, force_main: bool) -> None:
     print("[4/5] Syncing full workspace to origin/main ...")
     if not (root / ".git").exists():
@@ -337,9 +484,16 @@ def sync_main_branch(root: Path, token: str, login: str, message: str, force_mai
     push_args = ["push", "-u", "origin", "HEAD:main"]
     if force_main:
         push_args.insert(1, "--force")
-    push_res = run_git_network(push_args, root, token)
-    if push_res.stderr.strip():
-        print(push_res.stderr.strip())
+    try:
+        push_res = run_git_network(push_args, root, token)
+        if push_res.stderr.strip():
+            print(push_res.stderr.strip())
+    except RuntimeError as exc:
+        if "403" in str(exc) or "Permission to" in str(exc):
+            print("Git smart-HTTP used secondary account; syncing main via GitHub Git Data API ...")
+            _sync_main_via_api(root, token, message, force_main)
+        else:
+            raise
     print(f"Pushed workspace to {FULL_REPO} (main).")
 
     _, repo_info = github_api_request("GET", f"/repos/{FULL_REPO}", token)
@@ -373,9 +527,16 @@ def deploy_gh_pages(root: Path, token: str, login: str, message: str) -> None:
         run_git_local(["commit", "-m", message], stage_dir)
         run_git_local(["remote", "add", "origin", REMOTE_URL], stage_dir)
 
-        push_res = run_git_network(["push", "--force", "origin", "HEAD:gh-pages"], stage_dir, token)
-        if push_res.stderr.strip():
-            print(push_res.stderr.strip())
+        try:
+            push_res = run_git_network(["push", "--force", "origin", "HEAD:gh-pages"], stage_dir, token)
+            if push_res.stderr.strip():
+                print(push_res.stderr.strip())
+        except RuntimeError as exc:
+            if "403" in str(exc) or "Permission to" in str(exc):
+                print("Git smart-HTTP used secondary account; deploying gh-pages via GitHub Git Data API ...")
+                _deploy_pages_via_api(stage_dir, token, message)
+            else:
+                raise
     finally:
         _safe_rmtree(stage_dir)
 
