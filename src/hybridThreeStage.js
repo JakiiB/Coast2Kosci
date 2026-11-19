@@ -1035,9 +1035,9 @@ window.C2KHybridThreeStage = (function () {
       }
     );
 
-    // Simon beacon
+    // Jesse Simon (#43) beacon
     runnerMarkerObj = createOverlayElement(
-      '<div class="marker-runner-card"><span id="three-runner-title">SIMON</span><span id="three-runner-sub" style="font-family:var(--font-mono);font-size:10px;opacity:0.95;">0.0k · 4m</span></div><div class="marker-runner-stem"></div><div class="marker-runner-dot"></div>',
+      '<div class="marker-runner-card"><span id="three-runner-title">JESSE #43</span><span id="three-runner-sub" style="font-family:var(--font-mono);font-size:10px;opacity:0.95;">0.0k · 4m</span></div><div class="marker-runner-stem"></div><div class="marker-runner-dot"></div>',
       "marker-3d-runner",
       149.87226,
       -37.09205,
@@ -1061,7 +1061,8 @@ window.C2KHybridThreeStage = (function () {
       const isHyp = runnerState.epistemic === "HYPOTHESIS_PACE_ESTIMATE";
       runnerMarkerObj.el.classList.toggle("is-hypothesis", isHyp);
       const tEl = document.getElementById("three-runner-title");
-      if (tEl) tEl.textContent = isHyp ? "SIMON (EST.)" : "SIMON";
+      const bibTag = (runnerState.bib && runnerState.bib !== "C2K") ? " #" + runnerState.bib : " #43";
+      if (tEl) tEl.textContent = isHyp ? "JESSE" + bibTag + " (EST.)" : "JESSE" + bibTag;
       const sEl = document.getElementById("three-runner-sub");
       if (sEl) sEl.textContent = (runnerState.course_km || 0).toFixed(1) + "k · " + Math.round(runnerState.ele_m || 0) + "m";
 

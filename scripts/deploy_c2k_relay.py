@@ -51,10 +51,10 @@ const C2K_MAX_PROP_CHARS = 7800; // Stay safely under Apps Script 9 KB per-prope
 const DEFAULT_C2K_CORE = {{
   raceStatus: "PRE_RACE_SIM", // PRE_RACE_SIM | LIVE_RACE | FINISHED
   raceStartIso: "2026-11-20T05:30:00+11:00",
-  externalTrackerUrl: "https://live.trackmelive.com.au/",
+  externalTrackerUrl: "https://live.trackmelive.com.au/coasttokosci26/?search=43",
   runner: {{
-    name: "Simon",
-    bib: "C2K",
+    name: "Jesse Simon",
+    bib: "43",
     lat: -37.092052,
     lon: 149.872263,
     ele_m: 4.0,
@@ -141,8 +141,14 @@ function getC2KState() {{
       const saved = JSON.parse(rawCore);
       if (saved.raceStatus) state.raceStatus = saved.raceStatus;
       if (saved.raceStartIso) state.raceStartIso = saved.raceStartIso;
-      if (saved.externalTrackerUrl !== undefined) state.externalTrackerUrl = saved.externalTrackerUrl;
-      if (saved.runner) state.runner = Object.assign(state.runner, saved.runner);
+      if (saved.externalTrackerUrl !== undefined && saved.externalTrackerUrl !== 'https://live.trackmelive.com.au/') {{
+        state.externalTrackerUrl = saved.externalTrackerUrl;
+      }}
+      if (saved.runner) {{
+        state.runner = Object.assign(state.runner, saved.runner);
+        if (!state.runner.name || state.runner.name === 'Simon') state.runner.name = DEFAULT_C2K_CORE.runner.name;
+        if (!state.runner.bib || state.runner.bib === 'C2K') state.runner.bib = DEFAULT_C2K_CORE.runner.bib;
+      }}
       if (saved.crew) state.crew = Object.assign(state.crew, saved.crew);
     }} else {{
       // One-time migration from legacy C2K_TELEMETRY_STATE if present
@@ -150,8 +156,14 @@ function getC2KState() {{
       if (legacyRaw) {{
         const legacy = JSON.parse(legacyRaw);
         if (legacy.raceStatus) state.raceStatus = legacy.raceStatus;
-        if (legacy.externalTrackerUrl !== undefined) state.externalTrackerUrl = legacy.externalTrackerUrl;
-        if (legacy.runner) state.runner = Object.assign(state.runner, legacy.runner);
+        if (legacy.externalTrackerUrl !== undefined && legacy.externalTrackerUrl !== 'https://live.trackmelive.com.au/') {{
+          state.externalTrackerUrl = legacy.externalTrackerUrl;
+        }}
+        if (legacy.runner) {{
+          state.runner = Object.assign(state.runner, legacy.runner);
+          if (!state.runner.name || state.runner.name === 'Simon') state.runner.name = DEFAULT_C2K_CORE.runner.name;
+          if (!state.runner.bib || state.runner.bib === 'C2K') state.runner.bib = DEFAULT_C2K_CORE.runner.bib;
+        }}
         if (legacy.crew) state.crew = Object.assign(state.crew, legacy.crew);
       }}
     }}
@@ -247,7 +259,7 @@ function handleC2KPing(data) {{
 
   const state = getC2KState();
   const roleRaw = String(data.role || 'crew').toLowerCase();
-  const role = (roleRaw === 'runner' || roleRaw === 'simon') ? 'runner' : 'crew';
+  const role = (roleRaw === 'runner' || roleRaw === 'simon' || roleRaw === 'jesse') ? 'runner' : 'crew';
   const lat = parseFloat(data.lat);
   const lon = parseFloat(data.lon || data.lng);
   if (isNaN(lat) || isNaN(lon)) {{
@@ -273,6 +285,8 @@ function handleC2KPing(data) {{
   const source = String(data.source || (role === 'runner' ? 'Runner Telemetry Ping' : 'GPSLogger Android Live')).slice(0, 80);
   const note = String(data.note || '').slice(0, 140);
 
+  if (data.name) target.name = String(data.name).trim().slice(0, 60);
+  if (role === 'runner' && data.bib) target.bib = String(data.bib).trim().slice(0, 16);
   target.lat = Math.round(lat * 1000000) / 1000000;
   target.lon = Math.round(lon * 1000000) / 1000000;
   if (ele !== null) target.ele_m = Math.round(ele * 10) / 10;
@@ -340,7 +354,7 @@ function handleC2KGpxIngest(body) {{
     return {{ error: 'Unauthorized: valid key or pin required.' }};
   }}
   const roleRaw = String(body.role || 'crew').toLowerCase();
-  const role = (roleRaw === 'runner' || roleRaw === 'simon') ? 'runner' : 'crew';
+  const role = (roleRaw === 'runner' || roleRaw === 'simon' || roleRaw === 'jesse') ? 'runner' : 'crew';
   let pts = Array.isArray(body.points) ? body.points : [];
   if ((!pts || !pts.length) && body.gpxXml) {{
     pts = extractGpxPointsFromXml(String(body.gpxXml));
@@ -416,8 +430,16 @@ function handleC2KCheckin(body) {{
   }}
 
   const state = getC2KState();
+  let coreDirty = false;
   if (body.raceStatus) {{
     state.raceStatus = String(body.raceStatus);
+    coreDirty = true;
+  }}
+  if (body.externalTrackerUrl) {{
+    state.externalTrackerUrl = String(body.externalTrackerUrl).trim();
+    coreDirty = true;
+  }}
+  if (coreDirty) {{
     saveC2KCore(state);
   }}
 
@@ -452,6 +474,12 @@ function handleC2KConfig(body) {{
   }}
   if (body.externalTrackerUrl !== undefined) {{
     state.externalTrackerUrl = String(body.externalTrackerUrl).trim();
+  }}
+  if (body.runnerName !== undefined && state.runner) {{
+    state.runner.name = String(body.runnerName).trim().slice(0, 60);
+  }}
+  if (body.runnerBib !== undefined && state.runner) {{
+    state.runner.bib = String(body.runnerBib).trim().slice(0, 16);
   }}
   if (body.raceStatus !== undefined) {{
     state.raceStatus = String(body.raceStatus).trim();

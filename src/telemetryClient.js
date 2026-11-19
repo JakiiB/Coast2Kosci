@@ -6,6 +6,9 @@
 window.C2KTelemetryClient = (function () {
   const RELAY_URL = "https://script.google.com/macros/s/AKfycbzPosb-6ZToFhkaZBTD82_g74ge7gCVl4DCQixR0LZ4qLkabb7zVAds_PN9Gn2DnDwF3Q/exec";
   const DEFAULT_RACE_START_ISO = "2026-11-20T05:30:00+11:00";
+  const DEFAULT_TRACKER_URL = "https://live.trackmelive.com.au/coasttokosci26/?search=43";
+  const DEFAULT_RUNNER_NAME = "Jesse Simon";
+  const DEFAULT_RUNNER_BIB = "43";
   const LOCKED_SPLITS_KEY = "c2k_2026_locked_splits_v1";
 
   let courseData = null;
@@ -271,8 +274,8 @@ window.C2KTelemetryClient = (function () {
     const simonSpeed = finished ? 0 : Math.max(3.2, 9.8 * fatigueFactor * gradePenalty);
 
     runnerState = {
-      name: "Simon",
-      bib: "C2K",
+      name: DEFAULT_RUNNER_NAME,
+      bib: DEFAULT_RUNNER_BIB,
       lon: pt[0],
       lat: pt[1],
       ele_m: pt[2],
@@ -293,7 +296,7 @@ window.C2KTelemetryClient = (function () {
     let crewEle = pt[2];
     let crewKm = simonKm;
     let crewSpeed = 0;
-    let crewNote = "Leapfrog support alongside Simon";
+    let crewNote = "Leapfrog support alongside Jesse (#43)";
 
     if (simonKm < landmarks.cp1) {
       const towambaPt = window.C2KTerrainEngine.getPointAtKm(landmarks.cp1) || pt;
@@ -319,7 +322,7 @@ window.C2KTelemetryClient = (function () {
       crewSpeed = detourFrac < 0.85 ? 58.0 : 0.0;
       crewNote = detourFrac < 0.85
         ? "Detouring around Cow Bail Trail via Mt Darragh Rd"
-        : "Staged at CP3 Cathcart awaiting Simon";
+        : "Staged at CP3 Cathcart awaiting Jesse (#43)";
     } else if (simonKm > landmarks.cp8 && simonKm < totalKm - 0.5) {
       const cp8Pt = window.C2KTerrainEngine.getPointAtKm(landmarks.cp8) || pt;
       crewLon = cp8Pt[0];
@@ -453,9 +456,14 @@ window.C2KTelemetryClient = (function () {
           ? ""
           : rawRunnerNote;
 
+      const rawName = String(data.runner.name || "").trim();
+      const rawBib = String(data.runner.bib || "").trim();
+      const normName = (!rawName || rawName === "Simon") ? DEFAULT_RUNNER_NAME : rawName;
+      const normBib = (!rawBib || rawBib === "C2K") ? DEFAULT_RUNNER_BIB : rawBib;
+
       runnerState = {
-        name: data.runner.name || "Simon",
-        bib: data.runner.bib || "C2K",
+        name: normName,
+        bib: normBib,
         lat: displayLat,
         lon: displayLon,
         ele_m: displayEle,
@@ -562,9 +570,10 @@ window.C2KTelemetryClient = (function () {
       applyLiveCloudState({
         raceStatus: "PRE_RACE_SIM",
         raceStartIso: DEFAULT_RACE_START_ISO,
+        externalTrackerUrl: DEFAULT_TRACKER_URL,
         runner: {
-          name: "Simon",
-          bib: "C2K",
+          name: DEFAULT_RUNNER_NAME,
+          bib: DEFAULT_RUNNER_BIB,
           lat: courseData.track[0][1],
           lon: courseData.track[0][0],
           ele_m: courseData.track[0][2],
@@ -687,7 +696,13 @@ window.C2KTelemetryClient = (function () {
     init: init,
     getRelayUrl: function () { return RELAY_URL; },
     getExternalTrackerUrl: function () {
-      return (lastCloudState && lastCloudState.externalTrackerUrl) || "https://live.trackmelive.com.au/";
+      const cloudUrl = (lastCloudState && lastCloudState.externalTrackerUrl)
+        ? String(lastCloudState.externalTrackerUrl).trim()
+        : "";
+      if (!cloudUrl || cloudUrl === "https://live.trackmelive.com.au/" || cloudUrl === "https://live.trackmelive.com.au") {
+        return DEFAULT_TRACKER_URL;
+      }
+      return cloudUrl;
     },
     getMode: function () { return mode; },
     setMode: setMode,

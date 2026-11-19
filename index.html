@@ -81,7 +81,7 @@
       </header>
 
       <!-- Left Collapsible Telemetry & Cut-Off Dock -->
-      <aside id="left-telemetry-dock" class="left-telemetry-dock" aria-label="Simon, Crew and Cut-Off Telemetry">
+      <aside id="left-telemetry-dock" class="left-telemetry-dock" aria-label="Jesse Simon, Crew and Cut-Off Telemetry">
         <div class="dock-rail-bar">
           <span class="dock-rail-title">LIVE TELEMETRY &amp; GATES</span>
           <button id="btn-collapse-left-dock" type="button" class="dock-collapse-btn" aria-expanded="true" aria-controls="left-telemetry-dock" title="Collapse Left Dock">Hide &lt;</button>
@@ -91,13 +91,13 @@
           <button type="button" class="btn-chip mobile-sheet-close" data-close-mobile-sheet>3D Map &#10005;</button>
         </div>
 
-        <!-- Simon + Crew Cards -->
+        <!-- Jesse Simon (#43) + Crew Cards -->
         <section id="drawer-telemetry" class="dock-section">
           <div class="hud-panel runner-card">
             <div class="panel-header">
               <div class="panel-title">
-                <span style="color:var(--runner-orange);">SIMON</span>
-                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">#C2K RUNNER</span>
+                <span id="r-runner-name" style="color:var(--runner-orange);">JESSE SIMON</span>
+                <span id="r-runner-bib" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">BIB #43 · C2K</span>
               </div>
               <span id="r-epistemic-badge" class="epistemic-badge hypothesis">46H SIMULATOR</span>
             </div>
@@ -165,7 +165,7 @@
                 <div class="stat-val"><span id="c-ele-m">5</span> <span class="stat-unit">m</span></div>
               </div>
               <div class="stat-box">
-                <div class="stat-label">Gap to Simon</div>
+                <div class="stat-label">Gap to Jesse</div>
                 <div class="stat-val"><span id="c-sep-km">0.00</span> <span class="stat-unit">km</span></div>
               </div>
             </div>
@@ -201,7 +201,7 @@
       <div id="dock-expand-left-wrap" class="dock-expand-wrap is-left" hidden>
         <button id="btn-expand-left-dock" type="button" class="dock-reopen-btn" aria-expanded="false" aria-controls="left-telemetry-dock">Show Telemetry &gt;</button>
         <div class="mini-live-strip">
-          <span id="strip-simon-summary" class="strip-entity is-runner">Simon · 0.0 km · 4m</span>
+          <span id="strip-simon-summary" class="strip-entity is-runner">Jesse #43 · 0.0 km · 4m</span>
           <span class="strip-sep" aria-hidden="true">·</span>
           <span id="strip-crew-summary" class="strip-entity is-crew">Crew · 0.0 km</span>
         </div>
@@ -224,7 +224,7 @@
           </div>
           <div class="cam-grid">
             <button type="button" class="cam-btn active" data-cam-mode="overview"><span>Full 241K Course</span></button>
-            <button type="button" class="cam-btn" data-cam-mode="follow-simon"><span>Follow Simon</span></button>
+            <button type="button" class="cam-btn" data-cam-mode="follow-simon"><span>Follow Jesse #43</span></button>
             <button type="button" class="cam-btn" data-cam-mode="follow-crew"><span>Follow Crew Car</span></button>
             <button type="button" class="cam-btn" data-cam-mode="dual-frame"><span>Dual Framing</span></button>
             <button id="btn-fly-course" type="button" class="cam-btn" data-cam-mode="flyover"><span>241K Heli Tour</span></button>
@@ -294,7 +294,7 @@
           <div id="sim-clock-readout" class="sim-clock-readout">+06h 12m · FRI 11:42</div>
         </div>
 
-        <div class="elevation-canvas-wrap" title="Hover or drag to inspect elevation &amp; scrub Simon &amp; Crew - Double-tap or double-click to fly 3D camera">
+        <div class="elevation-canvas-wrap" title="Hover or drag to inspect elevation &amp; scrub Jesse &amp; Crew - Double-tap or double-click to fly 3D camera">
           <canvas id="elevation-canvas"></canvas>
         </div>
       </footer>
@@ -303,7 +303,7 @@
     <!-- Mobile Sticky Navigation Bar -->
     <nav id="mobile-crew-bar" class="mobile-crew-bar" aria-label="Mobile Broadcast Controls">
       <div class="mob-top-row">
-        <div id="mob-summary-text" class="mob-summary-pill">Simon 0.0k (4m) · Gap 0.0k</div>
+        <div id="mob-summary-text" class="mob-summary-pill">Jesse #43 0.0k (4m) · Gap 0.0k</div>
         <div class="mob-quick-pills">
           <button id="btn-mob-toggle-profile" type="button" class="btn-chip mob-mini-chip active-cyan" aria-expanded="true" aria-controls="bottom-broadcast-dock" title="Show or hide elevation profile chart">Profile</button>
           <button type="button" class="btn-chip mob-mini-chip active" data-telemetry-mode="SIM">SIM</button>
@@ -328,16 +328,16 @@
         <button id="btn-close-checkin" type="button" class="btn-chip">Close</button>
       </div>
 
-      <a id="link-official-tracker" href="https://live.trackmelive.com.au/" target="_blank" rel="noopener noreferrer" class="official-tracker-banner">
-        <span>Open Official Race Satellite Map (TrackMeLive) -&gt; Read Simon's KM</span>
+      <a id="link-official-tracker" href="https://live.trackmelive.com.au/coasttokosci26/?search=43" target="_blank" rel="noopener noreferrer" class="official-tracker-banner">
+        <span>Open Official Satellite Map (Bib #43 Jesse Simon) -&gt; Read KM</span>
         <span aria-hidden="true">&#8599;</span>
       </a>
 
       <div class="form-row">
         <label for="checkin-role">Who are you pinning on the 3D Map?</label>
         <select id="checkin-role" class="form-select">
-          <option value="both">Simon + Crew Car Together (Rendezvous / Aid Stop)</option>
-          <option value="runner">Simon Only (Runner Spot Check-In)</option>
+          <option value="both">Jesse Simon (#43) + Crew Car Together (Rendezvous / Aid Stop)</option>
+          <option value="runner">Jesse Simon (#43) Only (Runner Spot Check-In)</option>
           <option value="crew">Crew Car Only (Support Vehicle Position)</option>
         </select>
       </div>
@@ -396,7 +396,7 @@
 
       <div class="form-row">
         <label for="checkin-note">Status / Crew Note (Shown on Public Broadcast HUD)</label>
-        <input id="checkin-note" type="text" class="form-input" placeholder="e.g. Simon feeling strong leaving Cathcart CP3!" />
+        <input id="checkin-note" type="text" class="form-input" placeholder="e.g. Jesse (#43) feeling strong leaving Cathcart CP3!" />
       </div>
 
       <div class="form-row">
@@ -428,7 +428,7 @@
           <div class="stat-val" id="stop-detail-km">--</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">From Simon</div>
+          <div class="stat-label">From Jesse</div>
           <div class="stat-val" id="stop-detail-simon-dist">--</div>
         </div>
         <div class="stat-box">

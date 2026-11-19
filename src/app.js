@@ -66,7 +66,7 @@ window.C2KApp = (function () {
       const q = new URLSearchParams(window.location.search || "");
       const camParam = (q.get("cam") || "").toLowerCase();
       if (camParam === "crew") requestedUrlCam = "follow-crew";
-      else if (camParam === "simon" || camParam === "runner") requestedUrlCam = "follow-simon";
+      else if (camParam === "jesse" || camParam === "simon" || camParam === "runner") requestedUrlCam = "follow-simon";
       else if (camParam === "dual") requestedUrlCam = "dual-frame";
     } catch (e) {}
 
@@ -813,11 +813,14 @@ window.C2KApp = (function () {
           const payload = {
             pin: pin,
             raceStatus: raceStatus,
+            externalTrackerUrl: window.C2KTelemetryClient.getExternalTrackerUrl(),
             note: note || "Crew Mobile Check-In"
           };
           const pinNote = note || (courseKm !== null ? "Pinned at " + courseKm.toFixed(1) + " km" : "Crew Mobile Check-In");
           if (roleSel === "both" || roleSel === "runner") {
             payload.runner = {
+              name: "Jesse Simon",
+              bib: "43",
               lat: lat,
               lon: lon,
               ele: ele,

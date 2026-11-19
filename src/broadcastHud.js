@@ -174,10 +174,11 @@ window.C2KBroadcastHud = (function () {
     const runner = latestHudArgs.runner;
     const crew = latestHudArgs.crew;
     const rKm = runner.course_km || 0;
+    const bib = (runner.bib && runner.bib !== "C2K") ? runner.bib : "43";
     const sepKm = window.C2KTelemetryClient
       ? window.C2KTelemetryClient.haversineKm(runner.lat, runner.lon, crew.lat, crew.lon)
       : 0;
-    return "Simon " + rKm.toFixed(1) + "k (" + Math.round(runner.ele_m || 0) + "m) · Gap " + sepKm.toFixed(1) + "k";
+    return "Jesse #" + bib + " " + rKm.toFixed(1) + "k (" + Math.round(runner.ele_m || 0) + "m) · Gap " + sepKm.toFixed(1) + "k";
   }
 
   function updateReadoutBarText() {
@@ -204,10 +205,11 @@ window.C2KBroadcastHud = (function () {
     if (el && latestHudArgs && latestHudArgs.runner) {
       const r = latestHudArgs.runner;
       const rKm = r.course_km || 0;
+      const bib = (r.bib && r.bib !== "C2K") ? r.bib : "43";
       const gradeStr = (r.grade_pct > 0 ? "+" : "") + (r.grade_pct || 0).toFixed(1) + "%";
       const ctx = getSurfaceAndPlaceAtKm(rKm);
       el.textContent =
-        "SIMON " + rKm.toFixed(1) + " km · " + Math.round(r.ele_m || 0) + " m · grade " + gradeStr + " · " + ctx.placeCtx + " · " + ctx.surface;
+        "JESSE #" + bib + " · " + rKm.toFixed(1) + " km · " + Math.round(r.ele_m || 0) + " m · grade " + gradeStr + " · " + ctx.placeCtx + " · " + ctx.surface;
     }
   }
 
@@ -571,7 +573,7 @@ window.C2KBroadcastHud = (function () {
       }
       if (stop.crew_access === false) badges.push('<span class="stop-badge info">Foot Only</span>');
       if (stop.runner_access === false) badges.push('<span class="stop-badge warn">Off Cow Bail</span>');
-      if (isNext) badges.push('<span class="stop-badge info">NEXT FOR SIMON</span>');
+      if (isNext) badges.push('<span class="stop-badge info">NEXT FOR JESSE #43</span>');
 
       const kmText = stop.return_course_km
         ? stop.course_km.toFixed(1) + "k / " + stop.return_course_km.toFixed(1) + "k"
@@ -682,10 +684,13 @@ window.C2KBroadcastHud = (function () {
         setText("c-next-toilet", activeCrewNextStop.label);
       }
 
-      setText("strip-simon-summary", "Simon · " + rKm.toFixed(1) + " km · " + Math.round(runner.ele_m || 0) + "m");
+      const rBib = (runner.bib && runner.bib !== "C2K") ? runner.bib : "43";
+      setText("r-runner-name", (runner.name || "Jesse Simon").toUpperCase());
+      setText("r-runner-bib", "BIB #" + rBib + " · C2K");
+      setText("strip-simon-summary", "Jesse #" + rBib + " · " + rKm.toFixed(1) + " km · " + Math.round(runner.ele_m || 0) + "m");
       setText("strip-crew-summary", "Crew · " + (crew.course_km || 0).toFixed(1) + " km (Gap " + sepKm.toFixed(1) + "k)");
       if (!(isDraggingProfile && hoverKm !== null)) {
-        setText("mob-summary-text", "Simon " + rKm.toFixed(1) + "k (" + Math.round(runner.ele_m || 0) + "m) · Gap " + sepKm.toFixed(1) + "k");
+        setText("mob-summary-text", "Jesse #" + rBib + " " + rKm.toFixed(1) + "k (" + Math.round(runner.ele_m || 0) + "m) · Gap " + sepKm.toFixed(1) + "k");
       }
 
       updateReadoutBarText();

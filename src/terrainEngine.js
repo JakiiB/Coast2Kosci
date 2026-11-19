@@ -704,11 +704,11 @@ window.C2KTerrainEngine = (function () {
       .setLngLat([149.87226, -37.09205])
       .addTo(map);
 
-    // Simon Live Beacon
+    // Jesse Simon (#43) Live Beacon
     runnerEl = document.createElement("div");
     runnerEl.className = "marker-3d-runner";
     runnerEl.innerHTML =
-      '<div class="marker-runner-card"><span id="marker-runner-title">SIMON</span><span id="marker-runner-sub" style="font-family:var(--font-mono);font-size:10px;opacity:0.95;">0.0k · 4m</span></div>' +
+      '<div class="marker-runner-card"><span id="marker-runner-title">JESSE #43</span><span id="marker-runner-sub" style="font-family:var(--font-mono);font-size:10px;opacity:0.95;">0.0k · 4m</span></div>' +
       '<div class="marker-runner-stem"></div>' +
       '<div class="marker-runner-dot"></div>';
     runnerEl.addEventListener("click", function (e) {
@@ -976,7 +976,8 @@ window.C2KTerrainEngine = (function () {
       const isHyp = runnerState.epistemic === "HYPOTHESIS_PACE_ESTIMATE";
       if (runnerEl) runnerEl.classList.toggle("is-hypothesis", isHyp);
       const titleEl = document.getElementById("marker-runner-title");
-      if (titleEl) titleEl.textContent = isHyp ? "SIMON (EST.)" : "SIMON";
+      const bibTag = (runnerState.bib && runnerState.bib !== "C2K") ? " #" + runnerState.bib : " #43";
+      if (titleEl) titleEl.textContent = isHyp ? "JESSE" + bibTag + " (EST.)" : "JESSE" + bibTag;
       const sub = document.getElementById("marker-runner-sub");
       if (sub) {
         sub.textContent = (runnerState.course_km || 0).toFixed(1) + "k · " + Math.round(runnerState.ele_m || 0) + "m";
