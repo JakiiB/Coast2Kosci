@@ -266,9 +266,6 @@ window.C2KBroadcastHud = (function () {
       }
       const km = getKmFromPointerEvent(e);
       hoverKm = km;
-      if (window.C2KTelemetryClient) {
-        window.C2KTelemetryClient.setSimProgressByKm(km);
-      }
       updateReadoutBarText();
       drawElevationProfile();
     });
@@ -278,9 +275,6 @@ window.C2KBroadcastHud = (function () {
       const pt = window.C2KTerrainEngine.getPointAtKm(hoverKm);
       if (pt) {
         window.C2KTerrainEngine.showScrubHoverPin(pt[0], pt[1], true);
-      }
-      if (isDraggingProfile && window.C2KTelemetryClient) {
-        window.C2KTelemetryClient.setSimProgressByKm(hoverKm);
       }
       updateReadoutBarText();
       drawElevationProfile();
@@ -450,7 +444,7 @@ window.C2KBroadcastHud = (function () {
       badgeEl.textContent = "46H SIMULATOR";
     } else if (status === "PRE_RACE_BASELINE") {
       badgeEl.className = "epistemic-badge neutral";
-      badgeEl.textContent = "PRE-RACE READY";
+      badgeEl.textContent = "AWAITING LIVE FIX";
     } else if (status === "CONFIRMED_FIX") {
       badgeEl.className = "epistemic-badge confirmed";
       badgeEl.textContent = "CONFIRMED FIX";

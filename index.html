@@ -34,9 +34,9 @@
       <!-- Top Broadcast Header -->
       <header class="top-broadcast-bar">
         <div class="broadcast-brand">
-          <div id="broadcast-status-pill" class="live-pill">
+          <div id="broadcast-status-pill" class="live-pill is-live">
             <span class="pulse-dot" aria-hidden="true"></span>
-            <span id="broadcast-status-text">46H SIMULATOR</span>
+            <span id="broadcast-status-text">LIVE RACE</span>
           </div>
           <div class="brand-titles">
             <h1>COAST TO KOSCI</h1>
@@ -45,7 +45,7 @@
           <button id="hybrid-engine-badge" type="button" class="hybrid-engine-badge" title="Three.js 3D Corridor Mesh (60 FPS macro terrain) - zoom past 12.2 for Google Street Sat">3D CORRIDOR</button>
         </div>
 
-        <div class="top-controls-strip" role="toolbar" aria-label="Map Layers and Telemetry Mode">
+        <div class="top-controls-strip" role="toolbar" aria-label="Map Layers">
           <div class="ctrl-group">
             <span class="ctrl-label">Map</span>
             <button type="button" class="btn-chip active" data-imagery="google">Google 3D</button>
@@ -65,12 +65,6 @@
             <button id="toggle-bom-radar" type="button" class="btn-chip" title="Toggle Live Australian BoM / RainViewer Radar">Radar</button>
             <button id="toggle-milestones" type="button" class="btn-chip active" title="Toggle 10km Course Milestones">10K Ticks</button>
             <button id="toggle-toilets" type="button" class="btn-chip" title="Toggle Official 2026 Toilets &amp; Community Aid Pins">Toilets &amp; Aid</button>
-          </div>
-
-          <div class="ctrl-group">
-            <span class="ctrl-label">Feed</span>
-            <button type="button" class="btn-chip active" data-telemetry-mode="SIM">46h Sim</button>
-            <button type="button" class="btn-chip" data-telemetry-mode="LIVE">Live Cloud</button>
           </div>
         </div>
 
@@ -99,7 +93,7 @@
                 <span id="r-runner-name" style="color:var(--runner-orange);">JESSE SIMON</span>
                 <span id="r-runner-bib" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">BIB #43 · C2K</span>
               </div>
-              <span id="r-epistemic-badge" class="epistemic-badge hypothesis">46H SIMULATOR</span>
+              <span id="r-epistemic-badge" class="epistemic-badge">LIVE RACE</span>
             </div>
 
             <div class="telemetry-grid">
@@ -142,7 +136,7 @@
             </div>
             <div class="telemetry-subrow" style="margin-top:4px;font-family:var(--font-mono);font-size:9.5px;">
               <span>Source:</span>
-              <span id="r-source">46h Race Simulator</span>
+              <span id="r-source">Live Cloud Telemetry</span>
             </div>
           </div>
 
@@ -275,26 +269,17 @@
         <button id="btn-drag-mode" type="button" class="cam-mode-pill is-orbit" aria-pressed="true" title="Toggle 1-finger / left-drag between 3D Orbit and Pan">Orbit</button>
       </div>
 
-      <!-- Bottom Broadcast Dock: 46h Sim Scrubber + 241.25 km Elevation Profile -->
+      <!-- Bottom Broadcast Dock: Live Telemetry Readout + 241.25 km Elevation Profile -->
       <footer id="bottom-broadcast-dock" class="bottom-broadcast-dock">
         <div class="sim-scrubber-bar">
-          <div class="sim-left-controls">
-            <button id="btn-sim-play" type="button" class="btn-chip">Play 46h Sim</button>
-            <button type="button" class="btn-chip" data-sim-speed="60">60x</button>
-            <button type="button" class="btn-chip active" data-sim-speed="180">180x</button>
-            <button type="button" class="btn-chip" data-sim-speed="450">450x</button>
-          </div>
-
           <div class="sim-slider-wrap">
             <span id="live-readout-strip" class="live-readout-inline">0.0 km · 4 m · Boydtown Beach</span>
-            <label for="sim-time-slider" class="sr-only">46-hour race simulation timeline</label>
-            <input id="sim-time-slider" type="range" class="brand-slider sim-slider" min="0" max="46" step="0.05" value="6.2" aria-valuetext="6.2 hours elapsed" />
           </div>
 
-          <div id="sim-clock-readout" class="sim-clock-readout">+06h 12m · FRI 11:42</div>
+          <div id="sim-clock-readout" class="sim-clock-readout">LIVE RACE CLOCK</div>
         </div>
 
-        <div class="elevation-canvas-wrap" title="Hover or drag to inspect elevation &amp; scrub Jesse &amp; Crew - Double-tap or double-click to fly 3D camera">
+        <div class="elevation-canvas-wrap" title="Hover or drag to inspect elevation - Double-tap or double-click to fly 3D camera">
           <canvas id="elevation-canvas"></canvas>
         </div>
       </footer>
@@ -306,8 +291,6 @@
         <div id="mob-summary-text" class="mob-summary-pill">Jesse #43 0.0k (4m) · Gap 0.0k</div>
         <div class="mob-quick-pills">
           <button id="btn-mob-toggle-profile" type="button" class="btn-chip mob-mini-chip active-cyan" aria-expanded="true" aria-controls="bottom-broadcast-dock" title="Show or hide elevation profile chart">Profile</button>
-          <button type="button" class="btn-chip mob-mini-chip active" data-telemetry-mode="SIM">SIM</button>
-          <button type="button" class="btn-chip mob-mini-chip" data-telemetry-mode="LIVE">LIVE</button>
         </div>
       </div>
       <div class="mob-btn-row">
@@ -394,8 +377,7 @@
       <div class="form-row">
         <label for="checkin-race-status">Race Mode</label>
         <select id="checkin-race-status" class="form-select">
-          <option value="LIVE_RACE">LIVE_RACE (Promote public tracker to live race positions)</option>
-          <option value="PRE_RACE_SIM">PRE_RACE_SIM (Pre-race dry run / keep public banner in pre-race countdown)</option>
+          <option value="LIVE_RACE">LIVE_RACE (Active 2026 Live Race Telemetry)</option>
         </select>
       </div>
 

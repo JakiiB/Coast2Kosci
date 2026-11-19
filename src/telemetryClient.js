@@ -12,7 +12,7 @@ window.C2KTelemetryClient = (function () {
   const LOCKED_SPLITS_KEY = "c2k_2026_locked_splits_v1";
 
   let courseData = null;
-  let mode = "SIM"; // "SIM" | "LIVE"
+  let mode = "LIVE"; // Live Race mode only
   let simPlaying = false;
   let simSpeedMultiplier = 180;
   let simElapsedHours = 6.2;
@@ -178,10 +178,6 @@ window.C2KTelemetryClient = (function () {
 
   function updateLiveGateSplits(data, currentRunner) {
     if (!courseData || !Array.isArray(courseData.cutoff_gates)) return;
-    if (data && data.raceStatus === "PRE_RACE_SIM") {
-      if (Object.keys(lockedLiveSplits).length) clearLockedSplits();
-      return;
-    }
     const startMs = getRaceStartMs();
     if (!startMs || isNaN(startMs)) return;
 
@@ -560,15 +556,13 @@ window.C2KTelemetryClient = (function () {
     return res;
   }
 
-  function setMode(newMode) {
-    mode = newMode === "LIVE" ? "LIVE" : "SIM";
-    if (mode === "SIM") {
-      computeSimulatedStates(simElapsedHours);
-    } else if (lastCloudState) {
+  function setMode() {
+    mode = "LIVE";
+    if (lastCloudState) {
       applyLiveCloudState(lastCloudState);
     } else {
       applyLiveCloudState({
-        raceStatus: "PRE_RACE_SIM",
+        raceStatus: "LIVE_RACE",
         raceStartIso: DEFAULT_RACE_START_ISO,
         externalTrackerUrl: DEFAULT_TRACKER_URL,
         runner: {
@@ -579,8 +573,8 @@ window.C2KTelemetryClient = (function () {
           ele_m: courseData.track[0][2],
           course_km: 0,
           speed_kmh: 0,
-          source: "Pre-Race Baseline",
-          note: "Ready at Boydtown Beach Start Line",
+          source: "Live Cloud Telemetry",
+          note: "Live race active - syncing latest GPS fix...",
           updated_at: 0
         },
         crew: {
@@ -590,47 +584,36 @@ window.C2KTelemetryClient = (function () {
           ele_m: 5,
           course_km: 0,
           speed_kmh: 0,
-          source: "Pre-Race Baseline",
-          note: "Support Crew staged at Boydtown Beach",
+          source: "Live Cloud Telemetry",
+          note: "Support Crew live on course",
           updated_at: 0
         }
       });
     }
 
-    document.querySelectorAll("[data-telemetry-mode]").forEach(function (btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-telemetry-mode") === mode);
-    });
     const pill = document.getElementById("broadcast-status-pill");
     const pillText = document.getElementById("broadcast-status-text");
     if (pill && pillText) {
-      pill.classList.toggle("is-live", mode === "LIVE");
-      pillText.textContent = mode === "LIVE" ? "LIVE CLOUD" : "46H SIMULATOR";
+      pill.classList.add("is-live");
+      pillText.textContent = "LIVE RACE";
     }
   }
 
-  function setSimElapsedHours(hrs) {
-    simElapsedHours = Math.max(0, Math.min(46.0, parseFloat(hrs) || 0));
-    if (mode !== "SIM") setMode("SIM");
-    computeSimulatedStates(simElapsedHours);
+  function setSimElapsedHours() {
+    // Demo/simulator mode removed for live race
   }
 
-  function setSimProgressByKm(targetKm) {
-    const totalKm = landmarks.total;
-    const frac = Math.max(0, Math.min(1, targetKm / totalKm));
-    const hrs = Math.pow(frac, 1.0 / 0.92) * targetFinishHours;
-    setSimElapsedHours(hrs);
+  function setSimProgressByKm() {
+    // Demo/simulator mode removed for live race
   }
 
   function toggleSimPlayback() {
-    simPlaying = !simPlaying;
-    if (simPlaying && mode !== "SIM") {
-      setMode("SIM");
-    }
-    return simPlaying;
+    simPlaying = false;
+    return false;
   }
 
-  function setSimSpeed(mult) {
-    simSpeedMultiplier = parseFloat(mult) || 180;
+  function setSimSpeed() {
+    // Demo/simulator mode removed for live race
   }
 
   function notifyListeners() {
@@ -640,16 +623,8 @@ window.C2KTelemetryClient = (function () {
   }
 
   function tickLoop(now) {
-    const dt = Math.min(0.1, (now - lastTick) / 1000);
     lastTick = now;
-
-    if (mode === "SIM" && simPlaying) {
-      simElapsedHours += (dt * simSpeedMultiplier) / 3600.0;
-      if (simElapsedHours >= 46.0) {
-        simElapsedHours = 0;
-      }
-      computeSimulatedStates(simElapsedHours);
-    } else if (mode === "LIVE" && now - lastLiveRefreshTick > 5000) {
+    if (now - lastLiveRefreshTick > 5000) {
       lastLiveRefreshTick = now;
       if (lastCloudState) {
         applyLiveCloudState(lastCloudState);
@@ -662,7 +637,7 @@ window.C2KTelemetryClient = (function () {
   }
 
   function getLiveTrail() {
-    if (mode !== "LIVE" || !lastCloudState || !Array.isArray(lastCloudState.trail)) {
+    if (!lastCloudState || !Array.isArray(lastCloudState.trail)) {
       return [];
     }
     return lastCloudState.trail;
@@ -673,20 +648,7 @@ window.C2KTelemetryClient = (function () {
     onStateUpdateCallback = callback;
     loadLockedSplits();
     extractLandmarksFromCourse(courseData);
-    let wantLiveFromUrl = false;
-    try {
-      const params = new URLSearchParams(window.location.search || "");
-      const mParam = (params.get("mode") || "").toLowerCase();
-      if (mParam === "live") {
-        wantLiveFromUrl = true;
-      }
-    } catch (e) {}
-
-    if (wantLiveFromUrl) {
-      setMode("LIVE");
-    } else {
-      computeSimulatedStates(simElapsedHours);
-    }
+    setMode("LIVE");
     pollCloudRelay();
     setInterval(pollCloudRelay, 15000);
     requestAnimationFrame(tickLoop);
