@@ -59,6 +59,8 @@ window.C2KTerrainEngine = (function () {
   let lastCompletedUpdateTime = 0;
   let lastRunnerState = null;
   let lastCrewState = null;
+  let lastLiveTrail = [];
+  let lastLiveTrailKey = "";
   let mapPinPickCallback = null;
   let readyFired = false;
 
@@ -507,6 +509,72 @@ window.C2KTerrainEngine = (function () {
         "circle-stroke-width": 1.6
       }
     });
+
+    // Live GPS Breadcrumb Trails (Crew GPX / GPSLogger & Runner Live Trail)
+    map.addSource("c2k-live-crew-trail", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    });
+
+    map.addLayer({
+      id: "c2k-live-crew-trail-casing",
+      type: "line",
+      source: "c2k-live-crew-trail",
+      filter: ["!=", ["geometry-type"], "Point"],
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": "#020617",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 4.5, 13, 7.0, 16, 10.0],
+        "line-opacity": 0.84
+      }
+    });
+
+    map.addLayer({
+      id: "c2k-live-crew-trail-line",
+      type: "line",
+      source: "c2k-live-crew-trail",
+      filter: ["!=", ["geometry-type"], "Point"],
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": "#38bdf8",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.2, 13, 3.8, 16, 5.5],
+        "line-opacity": 0.95
+      }
+    });
+
+    map.addLayer({
+      id: "c2k-live-crew-trail-pts",
+      type: "circle",
+      source: "c2k-live-crew-trail",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 2.2, 14, 4.2],
+        "circle-color": "#e0f2fe",
+        "circle-stroke-color": "#0284c7",
+        "circle-stroke-width": 1.4,
+        "circle-opacity": 0.9
+      }
+    });
+
+    map.addSource("c2k-live-runner-trail", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    });
+
+    map.addLayer({
+      id: "c2k-live-runner-trail-line",
+      type: "line",
+      source: "c2k-live-runner-trail",
+      filter: ["!=", ["geometry-type"], "Point"],
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": "#fb923c",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.5, 13, 4.2, 16, 6.0],
+        "line-opacity": 0.94
+      }
+    });
+
+    applyLiveTrailToMap(lastLiveTrail, true);
   }
 
   function setupCleanBeacons() {
@@ -1198,10 +1266,10 @@ window.C2KTerrainEngine = (function () {
             const isNarrow = window.innerWidth <= 1024;
             const fitPad = isNarrow
               ? {
-                  top: 76,
-                  bottom: document.body.classList.contains("mob-profile-collapsed") ? 104 : 228,
-                  left: 34,
-                  right: 34
+                  top: 84,
+                  bottom: document.body.classList.contains("mob-profile-collapsed") ? 108 : 232,
+                  left: 64,
+                  right: 64
                 }
               : {
                   top: 90,
@@ -1417,12 +1485,95 @@ window.C2KTerrainEngine = (function () {
     return map;
   }
 
+  function buildTrailSegments(coords, maxJumpKm) {
+    const segs = [];
+    let cur = [];
+    for (let i = 0; i < coords.length; i++) {
+      const pt = coords[i];
+      if (cur.length > 0) {
+        const prev = cur[cur.length - 1];
+        const dLat = (pt[1] - prev[1]) * 111.32;
+        const dLon = (pt[0] - prev[0]) * 111.32 * Math.cos((pt[1] * Math.PI) / 180.0);
+        if (Math.hypot(dLat, dLon) > maxJumpKm) {
+          if (cur.length >= 2) segs.push(cur);
+          cur = [];
+        }
+      }
+      cur.push(pt);
+    }
+    if (cur.length >= 2) segs.push(cur);
+    return segs;
+  }
+
+  function applyLiveTrailToMap(trailArray, force) {
+    if (!map || !mapStyleLoaded) return;
+    const arr = Array.isArray(trailArray) ? trailArray : [];
+    const lastItem = arr.length ? arr[arr.length - 1] : null;
+    const key = arr.length + "|" + (lastItem ? lastItem.join(",") : "");
+    if (!force && key === lastLiveTrailKey) return;
+    lastLiveTrailKey = key;
+
+    const crewPts = [];
+    const runnerPts = [];
+    const sorted = arr.slice().sort(function (a, b) { return (Number(a[0]) || 0) - (Number(b[0]) || 0); });
+    for (let i = 0; i < sorted.length; i++) {
+      const item = sorted[i];
+      if (!Array.isArray(item) || item.length < 4) continue;
+      const lat = Number(item[2]);
+      const lon = Number(item[3]);
+      if (isNaN(lat) || isNaN(lon)) continue;
+      if (item[1] === "r") runnerPts.push([lon, lat]);
+      else crewPts.push([lon, lat]);
+    }
+
+    const crewSrc = map.getSource("c2k-live-crew-trail");
+    if (crewSrc) {
+      const crewFeatures = [];
+      const crewSegs = buildTrailSegments(crewPts, 1.5);
+      if (crewSegs.length > 0) {
+        crewFeatures.push({
+          type: "Feature",
+          geometry: { type: "MultiLineString", coordinates: crewSegs },
+          properties: {}
+        });
+      }
+      for (let j = 0; j < crewPts.length; j++) {
+        crewFeatures.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: crewPts[j] },
+          properties: {}
+        });
+      }
+      crewSrc.setData({ type: "FeatureCollection", features: crewFeatures });
+    }
+
+    const runnerSrc = map.getSource("c2k-live-runner-trail");
+    if (runnerSrc) {
+      const runnerFeatures = [];
+      const runnerSegs = buildTrailSegments(runnerPts, 1.5);
+      if (runnerSegs.length > 0) {
+        runnerFeatures.push({
+          type: "Feature",
+          geometry: { type: "MultiLineString", coordinates: runnerSegs },
+          properties: {}
+        });
+      }
+      runnerSrc.setData({ type: "FeatureCollection", features: runnerFeatures });
+    }
+  }
+
+  function updateLiveTrail(trailArray) {
+    lastLiveTrail = Array.isArray(trailArray) ? trailArray : [];
+    applyLiveTrailToMap(lastLiveTrail, false);
+  }
+
   return {
     init: init,
     getMap: getMapProxy,
     getActiveEngine: function () { return activeEngine; },
     toggleHybridEngine: toggleHybridEngine,
     updateEntities: updateEntities,
+    updateLiveTrail: updateLiveTrail,
     setImageryLayer: setImageryLayer,
     setTerrainExaggeration: setTerrainExaggeration,
     setMilestonesVisible: setMilestonesVisible,

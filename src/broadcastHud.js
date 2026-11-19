@@ -600,6 +600,8 @@ window.C2KBroadcastHud = (function () {
     });
   }
 
+  let lastDomMode = "";
+
   function updateHud(runner, crew, elapsedHours, mode, timerTickOnly) {
     if (!runner || !crew || !courseData) return;
     latestHudArgs = { runner: runner, crew: crew, elapsedHours: elapsedHours, mode: mode };
@@ -608,8 +610,11 @@ window.C2KBroadcastHud = (function () {
     if (!timerTickOnly) {
       drawElevationProfile();
     }
-    if (!timerTickOnly && now - lastDomUpdateTs < 150 && !isDraggingProfile) return;
+    if (!timerTickOnly && mode === "SIM" && lastDomMode === "SIM" && now - lastDomUpdateTs < 150 && !isDraggingProfile) {
+      return;
+    }
     lastDomUpdateTs = now;
+    lastDomMode = mode;
 
     const totalKm = courseData.meta.total_distance_km || 241.25;
 

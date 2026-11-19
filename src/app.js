@@ -60,6 +60,16 @@ window.C2KApp = (function () {
     populateCheckpointSelect();
 
     let telemetryStarted = false;
+    let urlCamApplied = false;
+    let requestedUrlCam = "";
+    try {
+      const q = new URLSearchParams(window.location.search || "");
+      const camParam = (q.get("cam") || "").toLowerCase();
+      if (camParam === "crew") requestedUrlCam = "follow-crew";
+      else if (camParam === "simon" || camParam === "runner") requestedUrlCam = "follow-simon";
+      else if (camParam === "dual") requestedUrlCam = "dual-frame";
+    } catch (e) {}
+
     function startTelemetryFeed() {
       if (telemetryStarted) return;
       telemetryStarted = true;
@@ -67,7 +77,18 @@ window.C2KApp = (function () {
         if (window.C2KTerrainEngine && window.C2KTerrainEngine.updateEntities) {
           window.C2KTerrainEngine.updateEntities(runner, crew);
         }
+        if (window.C2KTerrainEngine && window.C2KTerrainEngine.updateLiveTrail && window.C2KTelemetryClient.getLiveTrail) {
+          window.C2KTerrainEngine.updateLiveTrail(window.C2KTelemetryClient.getLiveTrail());
+        }
         window.C2KBroadcastHud.updateHud(runner, crew, elapsedHours, mode);
+
+        if (!urlCamApplied && requestedUrlCam && window.C2KTerrainEngine && window.C2KTerrainEngine.setCameraMode) {
+          const hasLiveCloud = mode !== "LIVE" || !!(window.C2KTelemetryClient && window.C2KTelemetryClient.getLastCloudState && window.C2KTelemetryClient.getLastCloudState());
+          if (hasLiveCloud) {
+            urlCamApplied = true;
+            window.C2KTerrainEngine.setCameraMode(requestedUrlCam);
+          }
+        }
       });
     }
 
@@ -99,13 +120,32 @@ window.C2KApp = (function () {
       const spdNode = node.getElementsByTagNameNS("*", "speed")[0] || node.getElementsByTagName("speed")[0];
       const eleVal = eleNode && eleNode.textContent ? parseFloat(eleNode.textContent.trim()) : undefined;
       const spdVal = spdNode && spdNode.textContent ? parseFloat(spdNode.textContent.trim()) : undefined;
+      const timeStr = timeNode && timeNode.textContent ? timeNode.textContent.trim() : undefined;
       points.push({
         lat: Number(lat.toFixed(6)),
         lon: Number(lon.toFixed(6)),
         ele: eleVal !== undefined && !isNaN(eleVal) ? Number(eleVal.toFixed(1)) : undefined,
-        time: timeNode && timeNode.textContent ? timeNode.textContent.trim() : undefined,
-        spd: spdVal !== undefined && !isNaN(spdVal) ? Number(spdVal.toFixed(3)) : 0
+        time: timeStr,
+        spd: spdVal !== undefined && !isNaN(spdVal) ? Number(spdVal.toFixed(3)) : null
       });
+    }
+    for (let j = 0; j < points.length; j++) {
+      const curr = points[j];
+      if (curr.spd === null && j > 0 && window.C2KTelemetryClient && window.C2KTelemetryClient.haversineKm) {
+        const prev = points[j - 1];
+        const tCurr = curr.time ? Date.parse(curr.time) : NaN;
+        const tPrev = prev.time ? Date.parse(prev.time) : NaN;
+        if (!isNaN(tCurr) && !isNaN(tPrev)) {
+          const dtSec = (tCurr - tPrev) / 1000.0;
+          if (dtSec >= 3.0 && dtSec <= 900.0) {
+            const distM = window.C2KTelemetryClient.haversineKm(prev.lat, prev.lon, curr.lat, curr.lon) * 1000.0;
+            curr.spd = Number(Math.min(45.0, distM / dtSec).toFixed(3));
+          }
+        }
+      }
+      if (curr.spd === null) {
+        curr.spd = 0;
+      }
     }
     return points;
   }

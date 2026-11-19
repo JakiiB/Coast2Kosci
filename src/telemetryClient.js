@@ -410,6 +410,8 @@ window.C2KTelemetryClient = (function () {
     if (!data) return;
     if (data.runner) {
       const rUpd = Number(data.runner.updated_at || 0);
+      const rFixRaw = Number(data.runner.fix_time || 0);
+      const rEffectiveTs = rFixRaw > 0 ? Math.min(Date.now(), rFixRaw) : rUpd;
       const prevKnownKm =
         (runnerState && typeof runnerState.confirmed_km === "number")
           ? runnerState.confirmed_km
@@ -426,9 +428,9 @@ window.C2KTelemetryClient = (function () {
       let displayLon = data.runner.lon;
       let displayEle = data.runner.ele_m !== undefined ? data.runner.ele_m : snap.ele_m;
 
-      if (rUpd > 0) {
-        const ageMins = Math.max(0, (Date.now() - rUpd) / 60000.0);
-        if (ageMins <= 12.0) {
+      if (rEffectiveTs > 0) {
+        const ageMins = Math.max(0, (Date.now() - rEffectiveTs) / 60000.0);
+        if (ageMins <= 15.0) {
           epistemicStatus = "CONFIRMED_FIX";
         } else if (ageMins <= 120.0 && (data.runner.speed_kmh || 0) > 2.0) {
           epistemicStatus = "HYPOTHESIS_PACE_ESTIMATE";
@@ -445,6 +447,12 @@ window.C2KTelemetryClient = (function () {
         }
       }
 
+      const rawRunnerNote = (data.runner.note || "").trim();
+      const runnerLiveNote =
+        rEffectiveTs > 0 && rawRunnerNote === "Ready at Boydtown Beach Start Line"
+          ? ""
+          : rawRunnerNote;
+
       runnerState = {
         name: data.runner.name || "Simon",
         bib: data.runner.bib || "C2K",
@@ -460,24 +468,33 @@ window.C2KTelemetryClient = (function () {
         battery_pct: data.runner.battery_pct !== undefined ? data.runner.battery_pct : 100,
         source: data.runner.source || "Cloud Relay",
         epistemic: epistemicStatus,
-        fix_age_text: formatFixAge(rUpd),
-        note: data.runner.note || getSectionNote(displayKm),
-        updated_at: rUpd
+        fix_age_text: formatFixAge(rEffectiveTs),
+        note: runnerLiveNote || getSectionNote(displayKm),
+        updated_at: rEffectiveTs
       };
     }
 
     if (data.crew) {
       const cUpd = Number(data.crew.updated_at || 0);
+      const cFixRaw = Number(data.crew.fix_time || 0);
+      const cEffectiveTs = cFixRaw > 0 ? Math.min(Date.now(), cFixRaw) : cUpd;
       const cSnap = snapToCourse(data.crew.lat, data.crew.lon);
       let cEpistemic = "PRE_RACE_BASELINE";
-      if (cUpd > 0) {
-        const cAgeMins = Math.max(0, (Date.now() - cUpd) / 60000.0);
-        cEpistemic = cAgeMins <= 15.0 ? "CONFIRMED_FIX" : "STALE_FIX";
+      if (cEffectiveTs > 0) {
+        const cAgeMins = Math.max(0, (Date.now() - cEffectiveTs) / 60000.0);
+        cEpistemic = cAgeMins <= 60.0 ? "CONFIRMED_FIX" : "STALE_FIX";
       }
       const offCourse = cSnap.offset_km > 25.0;
       const defaultNote = offCourse
         ? "Off-course (" + Math.round(cSnap.offset_km) + " km from C2K route)"
-        : "Offset " + cSnap.offset_km.toFixed(1) + " km from trail";
+        : cSnap.offset_km <= 0.35
+          ? "On C2K route (" + cSnap.course_km.toFixed(1) + " km)"
+          : "Offset " + cSnap.offset_km.toFixed(1) + " km from C2K route";
+      const rawCrewNote = (data.crew.note || "").trim();
+      const crewLiveNote =
+        cEffectiveTs > 0 && rawCrewNote === "Support Crew staged at Boydtown Beach"
+          ? ""
+          : rawCrewNote;
 
       crewState = {
         name: data.crew.name || "Crew Car (Jake)",
@@ -490,13 +507,13 @@ window.C2KTelemetryClient = (function () {
         battery_pct: data.crew.battery_pct !== undefined ? data.crew.battery_pct : 100,
         source: data.crew.source || "GPSLogger Live",
         epistemic: cEpistemic,
-        fix_age_text: formatFixAge(cUpd),
-        note: data.crew.note || defaultNote,
-        updated_at: cUpd
+        fix_age_text: formatFixAge(cEffectiveTs),
+        note: crewLiveNote || defaultNote,
+        updated_at: cEffectiveTs
       };
     }
 
-      if (mode === "LIVE" && window.C2KWeatherClouds3D && window.C2KWeatherClouds3D.setSolarAltitudeFromRealClock) {
+    if (mode === "LIVE" && window.C2KWeatherClouds3D && window.C2KWeatherClouds3D.setSolarAltitudeFromRealClock) {
       window.C2KWeatherClouds3D.setSolarAltitudeFromRealClock();
     }
 
@@ -635,12 +652,32 @@ window.C2KTelemetryClient = (function () {
     requestAnimationFrame(tickLoop);
   }
 
+  function getLiveTrail() {
+    if (mode !== "LIVE" || !lastCloudState || !Array.isArray(lastCloudState.trail)) {
+      return [];
+    }
+    return lastCloudState.trail;
+  }
+
   function init(data, callback) {
     courseData = data;
     onStateUpdateCallback = callback;
     loadLockedSplits();
     extractLandmarksFromCourse(courseData);
-    computeSimulatedStates(simElapsedHours);
+    let wantLiveFromUrl = false;
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      const mParam = (params.get("mode") || "").toLowerCase();
+      if (mParam === "live") {
+        wantLiveFromUrl = true;
+      }
+    } catch (e) {}
+
+    if (wantLiveFromUrl) {
+      setMode("LIVE");
+    } else {
+      computeSimulatedStates(simElapsedHours);
+    }
     pollCloudRelay();
     setInterval(pollCloudRelay, 15000);
     requestAnimationFrame(tickLoop);
@@ -657,6 +694,7 @@ window.C2KTelemetryClient = (function () {
     getRaceStartMs: getRaceStartMs,
     getTargetFinishHours: function () { return targetFinishHours; },
     getLastCloudState: function () { return lastCloudState; },
+    getLiveTrail: getLiveTrail,
     getGateSplits: getGateSplits,
     getSimElapsedHours: function () { return getEffectiveElapsedHours(); },
     setSimElapsedHours: setSimElapsedHours,

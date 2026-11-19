@@ -1,5 +1,6 @@
 # Private Relay Credentials & Tokens (NEVER commit to public GitHub)
 data/c2k_relay_config.json
+data/gpx_sync_cursor.json
 docs/macrodroid_gpslogger_setup.md
 .tokens/
 *.env

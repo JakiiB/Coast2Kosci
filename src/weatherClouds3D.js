@@ -235,7 +235,7 @@ window.C2KWeatherClouds3D = (function () {
     ctx.fillRect(0, 0, w, h);
 
     const r = window.C2KApp.getCurrentRunnerState();
-    if (r) {
+    if (r && r.epistemic !== "PRE_RACE_BASELINE") {
       const ptScreen = map.project([r.lon, r.lat]);
       const aheadPt = window.C2KTerrainEngine.getPointAtKm((r.course_km || 0) + 0.8);
       let beamAngle = -Math.PI / 2;
@@ -259,24 +259,41 @@ window.C2KWeatherClouds3D = (function () {
     }
 
     const c = window.C2KApp.getCurrentCrewState();
-    if (c) {
+    if (c && c.epistemic !== "PRE_RACE_BASELINE" && (c.speed_kmh || 0) > 1.5) {
       const cScreen = map.project([c.lon, c.lat]);
-      const cAheadPt = window.C2KTerrainEngine.getPointAtKm((c.course_km || 0) + 1.2);
-      let cBeamAngle = -Math.PI / 2;
-      if (cAheadPt) {
-        const cAheadScr = map.project([cAheadPt[0], cAheadPt[1]]);
-        cBeamAngle = Math.atan2(cAheadScr.y - cScreen.y, cAheadScr.x - cScreen.x);
+      let cBeamAngle = null;
+      const liveTrail = window.C2KTelemetryClient && window.C2KTelemetryClient.getLiveTrail
+        ? window.C2KTelemetryClient.getLiveTrail()
+        : [];
+      const crewTrail = liveTrail.filter(function (item) { return Array.isArray(item) && item[1] !== "r"; });
+      if (crewTrail.length >= 2) {
+        const prev = crewTrail[crewTrail.length - 2];
+        const prevScr = map.project([Number(prev[3]), Number(prev[2])]);
+        const dx = cScreen.x - prevScr.x;
+        const dy = cScreen.y - prevScr.y;
+        if (Math.hypot(dx, dy) > 3.0) {
+          cBeamAngle = Math.atan2(dy, dx);
+        }
       }
-      const cLen = 165;
+      if (cBeamAngle === null) {
+        const cAheadPt = window.C2KTerrainEngine.getPointAtKm((c.course_km || 0) + 1.2);
+        if (cAheadPt) {
+          const cAheadScr = map.project([cAheadPt[0], cAheadPt[1]]);
+          cBeamAngle = Math.atan2(cAheadScr.y - cScreen.y, cAheadScr.x - cScreen.x);
+        } else {
+          cBeamAngle = -Math.PI / 2;
+        }
+      }
+      const cLen = 140;
       const cGrad = ctx.createRadialGradient(cScreen.x, cScreen.y, 4, cScreen.x, cScreen.y, cLen);
-      cGrad.addColorStop(0, "rgba(200, 245, 255, " + (0.68 * nightStrength) + ")");
-      cGrad.addColorStop(0.45, "rgba(56, 189, 248, " + (0.24 * nightStrength) + ")");
+      cGrad.addColorStop(0, "rgba(200, 245, 255, " + (0.62 * nightStrength) + ")");
+      cGrad.addColorStop(0.45, "rgba(56, 189, 248, " + (0.20 * nightStrength) + ")");
       cGrad.addColorStop(1, "rgba(0, 229, 255, 0)");
 
       ctx.fillStyle = cGrad;
       ctx.beginPath();
       ctx.moveTo(cScreen.x, cScreen.y);
-      ctx.arc(cScreen.x, cScreen.y, cLen, cBeamAngle - 0.28, cBeamAngle + 0.28);
+      ctx.arc(cScreen.x, cScreen.y, cLen, cBeamAngle - 0.26, cBeamAngle + 0.26);
       ctx.closePath();
       ctx.fill();
     }
