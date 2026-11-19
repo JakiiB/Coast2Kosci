@@ -74,6 +74,8 @@ window.C2KHybridThreeStage = (function () {
   let heightW = 1024;
   let heightH = 640;
 
+  const SURFACE_LIFT = 0.008;
+
   let exaggeration = 2.2;
   let activeImageryMode = "google"; // "google" | "relief" | "esri"
   let activeSatTexture = null;
@@ -85,6 +87,9 @@ window.C2KHybridThreeStage = (function () {
   let lastKnownRunnerKm = 0;
   let lastRunnerState = null;
   let lastCrewState = null;
+  let lastLiveTrail = [];
+  let lastLiveTrailKey = "";
+  let liveTrailObjects = [];
 
   let poiMarkers = [];
   let milestoneMarkers = [];
@@ -156,32 +161,44 @@ window.C2KHybridThreeStage = (function () {
     return top + (bot - top) * ty;
   }
 
-  function sampleMeshMaxYAtUV(u, v) {
+  function sampleMeshExactYAtUV(u, v) {
     if (!baseGridHeights) return 0;
-    const fx = Math.max(0, Math.min(1, u)) * SEGS_X;
-    const fy = Math.max(0, Math.min(1, v)) * SEGS_Z;
-    const x0 = Math.floor(fx);
-    const y0 = Math.floor(fy);
-    const x1 = Math.min(SEGS_X, x0 + 1);
-    const y1 = Math.min(SEGS_Z, y0 + 1);
+    const cu = Math.max(0, Math.min(1, u));
+    const cv = Math.max(0, Math.min(1, v));
+    const fx = cu * SEGS_X;
+    const fy = cv * SEGS_Z;
+    const x0 = Math.min(SEGS_X - 1, Math.floor(fx));
+    const y0 = Math.min(SEGS_Z - 1, Math.floor(fy));
+    const x1 = x0 + 1;
+    const y1 = y0 + 1;
+    const tx = fx - x0;
+    const ty = fy - y0;
     const stride = SEGS_X + 1;
-    return Math.max(
-      baseGridHeights[y0 * stride + x0],
-      baseGridHeights[y0 * stride + x1],
-      baseGridHeights[y1 * stride + x0],
-      baseGridHeights[y1 * stride + x1]
-    );
+
+    const ha = baseGridHeights[y0 * stride + x0];
+    const hb = baseGridHeights[y1 * stride + x0];
+    const hc = baseGridHeights[y1 * stride + x1];
+    const hd = baseGridHeights[y0 * stride + x1];
+
+    // Matches THREE.PlaneGeometry quad split: triangles (a, b, d) and (b, c, d) along tx + ty = 1
+    if (tx + ty <= 1.0) {
+      return ha + tx * (hd - ha) + ty * (hb - ha);
+    }
+    return hc + (1.0 - tx) * (hb - hc) + (1.0 - ty) * (hd - hc);
   }
 
   function lonLatToWorldUnscaled(lon, lat, fallbackEleM) {
     const uv = lonLatToUV(lon, lat);
     const x = (uv[0] - 0.5) * meta.world_width;
     const z = (uv[1] - 0.5) * meta.world_depth;
-    let ele = fallbackEleM !== undefined ? fallbackEleM : 0;
-    if (heightPixels) {
-      ele = Math.max(ele, sampleHeightMetersAtUV(uv[0], uv[1]));
+    let y = 0;
+    if (baseGridHeights) {
+      y = sampleMeshExactYAtUV(uv[0], uv[1]);
+    } else if (heightPixels) {
+      y = Math.max(0, sampleHeightMetersAtUV(uv[0], uv[1])) / meta.meters_per_unit;
+    } else {
+      y = Math.max(0, fallbackEleM !== undefined ? fallbackEleM : 0) / meta.meters_per_unit;
     }
-    const y = Math.max(Math.max(0, ele) / meta.meters_per_unit, sampleMeshMaxYAtUV(uv[0], uv[1]));
     return [x, y, z];
   }
 
@@ -261,7 +278,7 @@ window.C2KHybridThreeStage = (function () {
     const uv = lonLatToUV(state.lon, state.lat);
     const tx = (uv[0] - 0.5) * meta.world_width;
     const tz = (uv[1] - 0.5) * meta.world_depth;
-    const ty = sampleMeshMaxYAtUV(uv[0], uv[1]) * exaggeration;
+    const ty = sampleMeshExactYAtUV(uv[0], uv[1]) * exaggeration;
 
     const brgRad = ((state.bearing || 0) * Math.PI) / 180.0;
     const polarRad = (Math.max(4, Math.min(76, state.pitch !== undefined ? state.pitch : 50)) * Math.PI) / 180.0;
@@ -359,7 +376,7 @@ window.C2KHybridThreeStage = (function () {
     scene.background = new THREE.Color(0x06090f);
     scene.fog = new THREE.FogExp2(0x070e1b, aspect < 1.0 ? 0.0014 : 0.0022);
 
-    camera = new THREE.PerspectiveCamera(computeResponsiveFov(aspect), aspect, 0.4, 1100);
+    camera = new THREE.PerspectiveCamera(computeResponsiveFov(aspect), aspect, 1.2, 1100);
     camera.position.set(42, 134, 188);
 
     controls = new THREE.OrbitControls(camera, canvasEl);
@@ -512,6 +529,9 @@ window.C2KHybridThreeStage = (function () {
         updateEntities(lastRunnerState, lastCrewState);
       } else {
         updateCompletedLine(lastKnownRunnerKm);
+      }
+      if (lastLiveTrail.length > 0) {
+        applyLiveTrailThree(lastLiveTrail, true);
       }
       if (onReadyCb) onReadyCb();
 
@@ -677,57 +697,80 @@ window.C2KHybridThreeStage = (function () {
     return line;
   }
 
+  function drapeCoordsToFlat(lonLatPairs, liftUnits) {
+    const flat = [];
+    if (!lonLatPairs || !lonLatPairs.length) return flat;
+    const lift = liftUnits !== undefined ? liftUnits : SURFACE_LIFT;
+
+    const p0 = lonLatToWorldUnscaled(lonLatPairs[0][0], lonLatPairs[0][1], 0);
+    flat.push(p0[0], p0[1] + lift, p0[2]);
+
+    for (let i = 1; i < lonLatPairs.length; i++) {
+      const lon0 = lonLatPairs[i - 1][0];
+      const lat0 = lonLatPairs[i - 1][1];
+      const lon1 = lonLatPairs[i][0];
+      const lat1 = lonLatPairs[i][1];
+      const uv0 = lonLatToUV(lon0, lat0);
+      const uv1 = lonLatToUV(lon1, lat1);
+      const cellSpan = Math.hypot((uv1[0] - uv0[0]) * SEGS_X, (uv1[1] - uv0[1]) * SEGS_Z);
+      const steps = Math.max(1, Math.min(96, Math.ceil(cellSpan * 2.5)));
+      for (let s = 1; s <= steps; s++) {
+        const t = s / steps;
+        const wPt = lonLatToWorldUnscaled(
+          lon0 + (lon1 - lon0) * t,
+          lat0 + (lat1 - lat0) * t,
+          0
+        );
+        flat.push(wPt[0], wPt[1] + lift, wPt[2]);
+      }
+    }
+    return flat;
+  }
+
   function buildCoursePolylines() {
     if (!courseData || !courseData.track || !reliefScaleGroup) return;
     const track = courseData.track;
 
-    const casingFlat = [];
-    const rimFlat = [];
-    const mainFlat = [];
-    const unsealedSegs = [];
-    let currentUnsealed = [];
+    const fullPairs = [];
+    const unsealedPairSegs = [];
+    let currentUnsealedPairs = [];
 
     for (let i = 0; i < track.length; i++) {
       const pt = track[i];
-      const wPt = lonLatToWorldUnscaled(pt[0], pt[1], pt[2]);
-      const yLift = wPt[1] + 0.16;
-      casingFlat.push(wPt[0], yLift, wPt[2]);
-      rimFlat.push(wPt[0], yLift, wPt[2]);
-      mainFlat.push(wPt[0], yLift, wPt[2]);
+      fullPairs.push([pt[0], pt[1]]);
 
       const km = pt[3];
       const isUnsealed = (km >= 51.7 && km <= 63.5) || km >= 222.6;
       if (isUnsealed) {
-        currentUnsealed.push(wPt[0], yLift, wPt[2]);
-      } else if (currentUnsealed.length > 0) {
-        if (currentUnsealed.length >= 6) unsealedSegs.push(currentUnsealed);
-        currentUnsealed = [];
+        currentUnsealedPairs.push([pt[0], pt[1]]);
+      } else if (currentUnsealedPairs.length > 0) {
+        if (currentUnsealedPairs.length >= 2) unsealedPairSegs.push(currentUnsealedPairs);
+        currentUnsealedPairs = [];
       }
     }
-    if (currentUnsealed.length >= 6) unsealedSegs.push(currentUnsealed);
+    if (currentUnsealedPairs.length >= 2) unsealedPairSegs.push(currentUnsealedPairs);
 
-    const casing = makeLine2(casingFlat, 0x040711, 6.4, false, 10);
+    const routeFlat = drapeCoordsToFlat(fullPairs, SURFACE_LIFT);
+
+    const casing = makeLine2(routeFlat, 0x040711, 6.4, false, 10);
     if (casing) reliefScaleGroup.add(casing);
 
-    const detourFlat = [];
-    for (let i = 0; i < CREW_DETOUR_WAYPOINTS.length; i++) {
-      const wp = CREW_DETOUR_WAYPOINTS[i];
-      const wPt = lonLatToWorldUnscaled(wp[0], wp[1], wp[2]);
-      detourFlat.push(wPt[0], wPt[1] + 0.16, wPt[2]);
-    }
+    const detourPairs = CREW_DETOUR_WAYPOINTS.map(function (wp) { return [wp[0], wp[1]]; });
+    const detourFlat = drapeCoordsToFlat(detourPairs, SURFACE_LIFT);
     const detourCasing = makeLine2(detourFlat, 0x040711, 4.4, false, 11);
     if (detourCasing) reliefScaleGroup.add(detourCasing);
     const detourLine = makeLine2(detourFlat, 0x00e5ff, 2.4, true, 12);
     if (detourLine) reliefScaleGroup.add(detourLine);
 
-    const rim = makeLine2(rimFlat, 0x1e293b, 4.4, false, 13);
+    const rim = makeLine2(routeFlat, 0x1e293b, 4.4, false, 13);
     if (rim) reliefScaleGroup.add(rim);
 
-    const mainRoute = makeLine2(mainFlat, 0xfbbf24, 3.1, false, 14);
+    const mainRoute = makeLine2(routeFlat, 0xfbbf24, 3.1, false, 14);
     if (mainRoute) reliefScaleGroup.add(mainRoute);
 
-    unsealedSegs.forEach(function (seg) {
-      const uLine = makeLine2(seg, 0xfef3c7, 2.6, true, 15);
+    unsealedPairSegs.forEach(function (pairSeg) {
+      const segFlat = drapeCoordsToFlat(pairSeg, SURFACE_LIFT);
+      const uLine = makeLine2(segFlat, 0xfef3c7, 2.6, true, 15);
       if (uLine) reliefScaleGroup.add(uLine);
     });
   }
@@ -738,16 +781,16 @@ window.C2KHybridThreeStage = (function () {
     lastDoneKm = courseKm;
 
     const track = courseData.track;
-    const flat = [];
+    const donePairs = [];
     for (let i = 0; i < track.length; i++) {
       const pt = track[i];
-      const wPt = lonLatToWorldUnscaled(pt[0], pt[1], pt[2]);
-      flat.push(wPt[0], wPt[1] + 0.16, wPt[2]);
+      donePairs.push([pt[0], pt[1]]);
       if (pt[3] >= courseKm) break;
     }
+    const flat = drapeCoordsToFlat(donePairs, SURFACE_LIFT + 0.0005);
     if (flat.length < 6) {
-      const p0 = lonLatToWorldUnscaled(track[0][0], track[0][1], track[0][2]);
-      flat.push(p0[0] + 0.001, p0[1] + 0.16, p0[2]);
+      const p0 = lonLatToWorldUnscaled(track[0][0], track[0][1], 0);
+      flat.push(p0[0] + 0.001, p0[1] + SURFACE_LIFT + 0.0005, p0[2]);
     }
 
     if (!doneLine) {
@@ -761,6 +804,95 @@ window.C2KHybridThreeStage = (function () {
       doneLine.computeLineDistances();
       if (oldGeom) oldGeom.dispose();
     }
+  }
+
+  function buildTrailSegmentsThree(coords, maxJumpKm) {
+    const segs = [];
+    let cur = [];
+    for (let i = 0; i < coords.length; i++) {
+      const pt = coords[i];
+      if (cur.length > 0) {
+        const prev = cur[cur.length - 1];
+        const dLat = (pt[1] - prev[1]) * 111.32;
+        const dLon = (pt[0] - prev[0]) * 111.32 * Math.cos((pt[1] * Math.PI) / 180.0);
+        if (Math.hypot(dLat, dLon) > maxJumpKm) {
+          if (cur.length >= 2) segs.push(cur);
+          cur = [];
+        }
+      }
+      cur.push(pt);
+    }
+    if (cur.length >= 2) segs.push(cur);
+    return segs;
+  }
+
+  function clearLiveTrailThree() {
+    for (let i = 0; i < liveTrailObjects.length; i++) {
+      const obj = liveTrailObjects[i];
+      if (reliefScaleGroup) reliefScaleGroup.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        const idx = lineMaterials.indexOf(obj.material);
+        if (idx !== -1) lineMaterials.splice(idx, 1);
+        obj.material.dispose();
+      }
+    }
+    liveTrailObjects = [];
+  }
+
+  function applyLiveTrailThree(trailArray, force) {
+    if (!reliefScaleGroup || !assetsReady) return;
+    const arr = Array.isArray(trailArray) ? trailArray : [];
+    const lastItem = arr.length ? arr[arr.length - 1] : null;
+    const key = arr.length + "|" + (lastItem ? lastItem.join(",") : "");
+    if (!force && key === lastLiveTrailKey) return;
+    lastLiveTrailKey = key;
+
+    clearLiveTrailThree();
+    if (!arr.length) return;
+
+    const crewPts = [];
+    const runnerPts = [];
+    const sorted = arr.slice().sort(function (a, b) { return (Number(a[0]) || 0) - (Number(b[0]) || 0); });
+    for (let i = 0; i < sorted.length; i++) {
+      const item = sorted[i];
+      if (!Array.isArray(item) || item.length < 4) continue;
+      const lat = Number(item[2]);
+      const lon = Number(item[3]);
+      if (isNaN(lat) || isNaN(lon)) continue;
+      if (item[1] === "r") runnerPts.push([lon, lat]);
+      else crewPts.push([lon, lat]);
+    }
+
+    const crewSegs = buildTrailSegmentsThree(crewPts, 1.5);
+    for (let c = 0; c < crewSegs.length; c++) {
+      const flat = drapeCoordsToFlat(crewSegs[c], SURFACE_LIFT + 0.001);
+      const casing = makeLine2(flat, 0x020617, 4.6, false, 17);
+      const line = makeLine2(flat, 0x38bdf8, 2.5, false, 18);
+      if (casing) {
+        reliefScaleGroup.add(casing);
+        liveTrailObjects.push(casing);
+      }
+      if (line) {
+        reliefScaleGroup.add(line);
+        liveTrailObjects.push(line);
+      }
+    }
+
+    const runnerSegs = buildTrailSegmentsThree(runnerPts, 1.5);
+    for (let r = 0; r < runnerSegs.length; r++) {
+      const rFlat = drapeCoordsToFlat(runnerSegs[r], SURFACE_LIFT + 0.0012);
+      const rLine = makeLine2(rFlat, 0xfb923c, 2.8, false, 19);
+      if (rLine) {
+        reliefScaleGroup.add(rLine);
+        liveTrailObjects.push(rLine);
+      }
+    }
+  }
+
+  function updateLiveTrail(trailArray) {
+    lastLiveTrail = Array.isArray(trailArray) ? trailArray : [];
+    applyLiveTrailThree(lastLiveTrail, false);
   }
 
   function createOverlayElement(html, className, lon, lat, eleM, onClick) {
@@ -845,7 +977,7 @@ window.C2KHybridThreeStage = (function () {
     // 10K milestones
     (courseData.milestones || []).forEach(function (ms) {
       const cls = ms.type === "special" ? "three-ms-dot special" : "three-ms-dot";
-      const m = createOverlayElement("", cls, ms.lon, ms.lat, 400, null);
+      const m = createOverlayElement("", cls, ms.lon, ms.lat, 0, null);
       m.el.style.display = milestonesVisible ? "block" : "none";
       milestoneMarkers.push(m);
     });
@@ -1201,11 +1333,12 @@ window.C2KHybridThreeStage = (function () {
     setFlying(false);
   }
 
-  function projectLonLat(lon, lat, eleM) {
+  function projectLonLat(lon, lat, extraAltM) {
     if (!camera) return { x: -9999, y: -9999 };
     const rect = getStageRect();
-    const wPt = lonLatToWorldUnscaled(lon, lat, eleM || 0);
-    const v = new THREE.Vector3(wPt[0], wPt[1] * exaggeration, wPt[2]);
+    const wPt = lonLatToWorldUnscaled(lon, lat, 0);
+    const extraUnits = extraAltM ? extraAltM / meta.meters_per_unit : 0;
+    const v = new THREE.Vector3(wPt[0], (wPt[1] + SURFACE_LIFT + extraUnits) * exaggeration, wPt[2]);
     v.project(camera);
     if (v.z > 1 || v.z < -1) return { x: -9999, y: -9999 };
     return {
@@ -1219,7 +1352,7 @@ window.C2KHybridThreeStage = (function () {
       if (hoverDotEl) hoverDotEl.style.display = "none";
       return;
     }
-    const scr = projectLonLat(lon, lat, 300);
+    const scr = projectLonLat(lon, lat, 0);
     if (scr.x < -20 || scr.y < -20) {
       hoverDotEl.style.display = "none";
       return;
@@ -1255,7 +1388,7 @@ window.C2KHybridThreeStage = (function () {
       const m = allProjectedMarkers[i];
       if (m.el.style.display === "none") continue;
       const wPt = lonLatToWorldUnscaled(m.lon, m.lat, m.eleM);
-      v.set(wPt[0], wPt[1] * exaggeration + 0.14, wPt[2]);
+      v.set(wPt[0], (wPt[1] + SURFACE_LIFT) * exaggeration, wPt[2]);
       v.project(camera);
       if (v.z > 1 || v.z < -1) {
         m.el.style.visibility = "hidden";
@@ -1386,6 +1519,7 @@ window.C2KHybridThreeStage = (function () {
     isActive: function () { return isActive; },
     isReady: function () { return assetsReady; },
     updateEntities: updateEntities,
+    updateLiveTrail: updateLiveTrail,
     setImageryLayer: setImageryLayer,
     setTerrainExaggeration: setTerrainExaggeration,
     setMilestonesVisible: setMilestonesVisible,

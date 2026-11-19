@@ -73,12 +73,12 @@ window.C2KWeatherClouds3D = (function () {
 
   function resizeCanvas() {
     if (!canvas) return;
-    const stageW = (canvas.parentElement && canvas.parentElement.clientWidth) || window.innerWidth;
-    const stageH = (canvas.parentElement && canvas.parentElement.clientHeight) || window.innerHeight;
-    canvas.width = Math.max(240, Math.floor(stageW * RENDER_SCALE));
-    canvas.height = Math.max(180, Math.floor(stageH * RENDER_SCALE));
+    const stageW = Math.max(1, (canvas.parentElement && canvas.parentElement.clientWidth) || window.innerWidth);
+    const stageH = Math.max(1, (canvas.parentElement && canvas.parentElement.clientHeight) || window.innerHeight);
+    canvas.width = Math.max(1, Math.round(stageW * RENDER_SCALE));
+    canvas.height = Math.max(1, Math.round(stageH * RENDER_SCALE));
     if (ctx) {
-      ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+      ctx.setTransform(canvas.width / stageW, 0, 0, canvas.height / stageH, 0, 0);
     }
     canvasCleared = false;
   }
@@ -229,10 +229,20 @@ window.C2KWeatherClouds3D = (function () {
   function renderNightBeams(map, w, h) {
     if (currentSolarAltDeg > 2.0 || !window.C2KApp) return;
     const nightStrength = Math.min(1.0, Math.max(0.15, (-currentSolarAltDeg + 2.0) / 12.0));
+    const zoom = map && typeof map.getZoom === "function" ? map.getZoom() : 12.0;
 
     ctx.save();
-    ctx.fillStyle = "rgba(2, 5, 14, " + (0.35 * nightStrength).toFixed(3) + ")";
+    ctx.fillStyle = "rgba(2, 5, 14, " + (0.28 * nightStrength).toFixed(3) + ")";
     ctx.fillRect(0, 0, w, h);
+
+    if (zoom < 10.2) {
+      ctx.restore();
+      return;
+    }
+
+    const zoomBeamScale = Math.min(1.15, Math.max(0.22, Math.pow(2, (zoom - 13.4) * 0.65)));
+    const zoomFade = Math.min(1.0, (zoom - 10.2) / 1.1);
+    const effStrength = nightStrength * zoomFade;
 
     const r = window.C2KApp.getCurrentRunnerState();
     if (r && r.epistemic !== "PRE_RACE_BASELINE") {
@@ -244,10 +254,10 @@ window.C2KWeatherClouds3D = (function () {
         beamAngle = Math.atan2(aheadScreen.y - ptScreen.y, aheadScreen.x - ptScreen.x);
       }
 
-      const coneLen = 145;
-      const grad = ctx.createRadialGradient(ptScreen.x, ptScreen.y, 4, ptScreen.x, ptScreen.y, coneLen);
-      grad.addColorStop(0, "rgba(255, 248, 220, " + (0.82 * nightStrength) + ")");
-      grad.addColorStop(0.4, "rgba(255, 195, 110, " + (0.35 * nightStrength) + ")");
+      const coneLen = 140 * zoomBeamScale;
+      const grad = ctx.createRadialGradient(ptScreen.x, ptScreen.y, 3, ptScreen.x, ptScreen.y, coneLen);
+      grad.addColorStop(0, "rgba(255, 248, 220, " + (0.82 * effStrength).toFixed(3) + ")");
+      grad.addColorStop(0.4, "rgba(255, 195, 110, " + (0.35 * effStrength).toFixed(3) + ")");
       grad.addColorStop(1, "rgba(255, 140, 40, 0)");
 
       ctx.fillStyle = grad;
@@ -284,10 +294,10 @@ window.C2KWeatherClouds3D = (function () {
           cBeamAngle = -Math.PI / 2;
         }
       }
-      const cLen = 140;
-      const cGrad = ctx.createRadialGradient(cScreen.x, cScreen.y, 4, cScreen.x, cScreen.y, cLen);
-      cGrad.addColorStop(0, "rgba(200, 245, 255, " + (0.62 * nightStrength) + ")");
-      cGrad.addColorStop(0.45, "rgba(56, 189, 248, " + (0.20 * nightStrength) + ")");
+      const cLen = 136 * zoomBeamScale;
+      const cGrad = ctx.createRadialGradient(cScreen.x, cScreen.y, 3, cScreen.x, cScreen.y, cLen);
+      cGrad.addColorStop(0, "rgba(200, 245, 255, " + (0.62 * effStrength).toFixed(3) + ")");
+      cGrad.addColorStop(0.45, "rgba(56, 189, 248, " + (0.20 * effStrength).toFixed(3) + ")");
       cGrad.addColorStop(1, "rgba(0, 229, 255, 0)");
 
       ctx.fillStyle = cGrad;

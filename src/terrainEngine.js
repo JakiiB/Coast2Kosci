@@ -1478,7 +1478,7 @@ window.C2KTerrainEngine = (function () {
         getPitch: function () { return window.C2KHybridThreeStage.getCameraGeoState().pitch; },
         getBearing: function () { return window.C2KHybridThreeStage.getCameraGeoState().bearing; },
         project: function (lngLat) {
-          return window.C2KHybridThreeStage.projectLonLat(lngLat[0], lngLat[1], 450);
+          return window.C2KHybridThreeStage.projectLonLat(lngLat[0], lngLat[1], 0);
         }
       };
     }
@@ -1564,6 +1564,9 @@ window.C2KTerrainEngine = (function () {
 
   function updateLiveTrail(trailArray) {
     lastLiveTrail = Array.isArray(trailArray) ? trailArray : [];
+    if (window.C2KHybridThreeStage && window.C2KHybridThreeStage.updateLiveTrail) {
+      window.C2KHybridThreeStage.updateLiveTrail(lastLiveTrail);
+    }
     applyLiveTrailToMap(lastLiveTrail, false);
   }
 
