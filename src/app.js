@@ -604,17 +604,156 @@ window.C2KApp = (function () {
       });
     });
 
+    const btnJesseSnap = document.getElementById("btn-jesse-here-snap");
+    const jesseSnapSubEl = document.getElementById("jesse-snap-sub");
+    const DEFAULT_SNAP_SUB = "Snaps Jesse + Crew Car to your exact phone GPS & resets ETA";
+    const CREW_PIN_STORAGE_KEY = "c2k_crew_pin_v1";
+
+    function loadSavedCrewPin() {
+      try {
+        return localStorage.getItem(CREW_PIN_STORAGE_KEY) || "";
+      } catch (_e) {
+        return "";
+      }
+    }
+
+    function saveCrewPin(pin) {
+      if (!pin) return;
+      try {
+        localStorage.setItem(CREW_PIN_STORAGE_KEY, pin);
+      } catch (_e) {
+        // Ignore storage quota or private-mode errors
+      }
+    }
+
+    function setJesseSnapUi(subText, isError, isBusy) {
+      if (!btnJesseSnap) return;
+      btnJesseSnap.disabled = !!isBusy;
+      btnJesseSnap.classList.toggle("is-error", !!isError);
+      if (jesseSnapSubEl) {
+        jesseSnapSubEl.textContent = subText || DEFAULT_SNAP_SUB;
+      }
+    }
+
     function openCheckinDialog() {
       if (!modal) return;
       if (trackerLinkEl && window.C2KTelemetryClient && window.C2KTelemetryClient.getExternalTrackerUrl) {
         trackerLinkEl.href = window.C2KTelemetryClient.getExternalTrackerUrl();
       }
+      const pinInput = document.getElementById("checkin-pin");
+      if (pinInput && !pinInput.value.trim()) {
+        const savedPin = loadSavedCrewPin();
+        if (savedPin) pinInput.value = savedPin;
+      }
+      setJesseSnapUi(DEFAULT_SNAP_SUB, false, false);
       setFeedback("", false);
       if (typeof modal.showModal === "function") {
         if (!modal.open) modal.showModal();
       } else {
         modal.setAttribute("open", "");
       }
+    }
+
+    if (btnJesseSnap) {
+      btnJesseSnap.addEventListener("click", function () {
+        const pinInput = document.getElementById("checkin-pin");
+        const pin = pinInput ? pinInput.value.trim() : "";
+        if (!pin) {
+          const msg = "Enter Crew Security PIN below once (remembered on this phone), then tap again.";
+          setJesseSnapUi(msg, true, false);
+          setFeedback(msg, true);
+          if (pinInput) {
+            pinInput.focus();
+            if (typeof pinInput.scrollIntoView === "function") {
+              pinInput.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }
+          return;
+        }
+        if (!navigator.geolocation) {
+          const msg = "Browser Geolocation is not available on this device.";
+          setJesseSnapUi(msg, true, false);
+          setFeedback(msg, true);
+          return;
+        }
+
+        setFeedback("", false);
+        setJesseSnapUi("Acquiring high-accuracy phone GPS...", false, true);
+
+        navigator.geolocation.getCurrentPosition(
+          async function (pos) {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const ele = typeof pos.coords.altitude === "number" && isFinite(pos.coords.altitude)
+              ? pos.coords.altitude
+              : null;
+            const acc = typeof pos.coords.accuracy === "number" && isFinite(pos.coords.accuracy)
+              ? Math.round(pos.coords.accuracy)
+              : null;
+
+            const latEl = document.getElementById("checkin-lat");
+            const lonEl = document.getElementById("checkin-lon");
+            if (latEl) latEl.value = lat.toFixed(6);
+            if (lonEl) lonEl.value = lon.toFixed(6);
+
+            const accTag = acc !== null ? " (+/-" + acc + "m)" : "";
+            setJesseSnapUi("GPS locked" + accTag + " · Broadcasting Jesse #43 + Crew...", false, true);
+
+            const raceStatusEl = document.getElementById("checkin-race-status");
+            const noteEl = document.getElementById("checkin-note");
+            const raceStatus = raceStatusEl ? raceStatusEl.value : "LIVE_RACE";
+            const customNote = noteEl ? noteEl.value.trim() : "";
+            const snapNote = customNote || ("Jesse #43 Rendezvous GPS Snap" + accTag);
+
+            try {
+              const payload = {
+                pin: pin,
+                raceStatus: raceStatus,
+                externalTrackerUrl: window.C2KTelemetryClient.getExternalTrackerUrl(),
+                note: snapNote,
+                runner: {
+                  name: "Jesse Simon",
+                  bib: "43",
+                  lat: lat,
+                  lon: lon,
+                  ele: ele,
+                  course_km: null,
+                  source: "Crew 1-Tap GPS Snap",
+                  note: snapNote
+                },
+                crew: {
+                  lat: lat,
+                  lon: lon,
+                  ele: ele,
+                  course_km: null,
+                  source: "Crew 1-Tap GPS Snap",
+                  note: snapNote
+                }
+              };
+
+              const res = await window.C2KTelemetryClient.submitCrewCheckin(payload);
+              if (res && res.error) {
+                setJesseSnapUi("Snap error: " + res.error, true, false);
+                setFeedback("Check-in error: " + res.error, true);
+              } else {
+                saveCrewPin(pin);
+                setJesseSnapUi(DEFAULT_SNAP_SUB, false, false);
+                closeCheckinDialog("submitted");
+                window.C2KTerrainEngine.flyToCoordinate(lon, lat, 14.0, 66, -30);
+              }
+            } catch (e) {
+              setJesseSnapUi("Network error: " + e.message, true, false);
+              setFeedback("Network error submitting GPS snap: " + e.message, true);
+            }
+          },
+          function (err) {
+            const msg = "GPS Error: " + (err && err.message ? err.message : "Could not acquire location");
+            setJesseSnapUi(msg, true, false);
+            setFeedback(msg, true);
+          },
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
+        );
+      });
     }
 
     function closeCheckinDialog(reason) {
@@ -763,6 +902,7 @@ window.C2KApp = (function () {
             if (lastRes && lastRes.error) {
               setFeedback("GPX ingest error: " + lastRes.error, true);
             } else {
+              saveCrewPin(pin);
               closeCheckinDialog("submitted");
               window.C2KTerrainEngine.flyToCoordinate(lastPt.lon, lastPt.lat, 13.8, 66, -30);
             }
@@ -844,6 +984,7 @@ window.C2KApp = (function () {
           if (res && res.error) {
             setFeedback("Check-in error: " + res.error, true);
           } else {
+            saveCrewPin(pin);
             closeCheckinDialog("submitted");
             window.C2KTerrainEngine.flyToCoordinate(lon, lat, 14.0, 66, -30);
           }

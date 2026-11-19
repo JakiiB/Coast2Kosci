@@ -1504,6 +1504,55 @@ dialog.crew-dialog::backdrop {
 .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .modal-header h2 { font-family: var(--font-display); font-size: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
 
+.btn-jesse-snap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 11px 13px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(16, 185, 129, 0.7);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.24), rgba(0, 229, 255, 0.16));
+  color: #ecfdf5;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.btn-jesse-snap:hover:not(:disabled) {
+  border-color: rgba(52, 211, 153, 0.95);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.34), rgba(0, 229, 255, 0.24));
+}
+.btn-jesse-snap:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.btn-jesse-snap:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
+.btn-jesse-snap-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+.btn-jesse-snap-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #a7f3d0;
+}
+.btn-jesse-snap.is-error {
+  border-color: rgba(239, 68, 68, 0.65);
+  background: rgba(239, 68, 68, 0.16);
+}
+.btn-jesse-snap.is-error .btn-jesse-snap-sub {
+  color: #fecaca;
+}
+
 .official-tracker-banner {
   display: flex;
   align-items: center;
